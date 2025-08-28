@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 
 interface ModalProps {
@@ -32,7 +33,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-2xl bg-gray-800 rounded-lg shadow-xl border border-gray-700 max-h-[90vh] flex flex-col"
+        className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-xl border border-gray-700 max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <header className="flex items-center justify-between p-4 border-b border-gray-700">

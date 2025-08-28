@@ -1,4 +1,5 @@
 
+
 export interface AttributeDefinition {
   id: string;
   name: string;
@@ -16,7 +17,7 @@ export interface Template {
 }
 
 export interface Entity {
-  id: string;
+  id:string;
   templateId: string;
   name: string;
   attributeValues: {
@@ -26,12 +27,59 @@ export interface Entity {
   };
 }
 
+export interface ChoiceOutcomeCreateEntity {
+  type: 'create_entity';
+  templateId: string;
+  name: string;
+  attributeValues?: {
+    [attributeId: string]: string | number | null;
+  };
+}
+
+export interface ChoiceOutcomeUpdateEntity {
+    type: 'update_entity';
+    targetEntityId: string;
+    attributeId: string;
+    value: string | number | null;
+}
+
+export type ChoiceOutcome = ChoiceOutcomeCreateEntity | ChoiceOutcomeUpdateEntity;
+
+export interface ChoiceOption {
+  id: string;
+  card: Omit<StoryCard, 'id' | 'choiceId'>;
+  outcome: ChoiceOutcome;
+}
+
+export interface PlayerChoice {
+  id: string;
+  name: string;
+  prompt: string;
+  choiceType: 'static' | 'dynamic_from_template';
+
+  // Used if choiceType is 'static'
+  staticOptions?: ChoiceOption[];
+
+  // Used if choiceType is 'dynamic_from_template'
+  dynamicConfig?: {
+      sourceTemplateId: string;
+      cardTemplate: Omit<StoryCard, 'id' | 'choiceId'>; // Placeholders like {entity.name} will be used here.
+      // The `value` for the outcome will be the chosen entity's ID.
+      outcomeTemplate: Omit<ChoiceOutcomeUpdateEntity, 'value'>; 
+  };
+  
+  styles?: {
+      layout?: 'grid' | 'carousel';
+  }
+}
+
 export interface StoryCard {
   id: string;
   description: string;
   imagePrompt: string;
   imageBase64?: string; // Can be from AI gen (raw base64) or upload (data URL)
   foregroundImageBase64?: string; // Will be a data URL from upload
+  choiceId?: string; // Links to a PlayerChoice
   styles?: {
     textPosition?: 'top' | 'middle' | 'bottom';
     textAlign?: 'left' | 'center' | 'right';
@@ -55,6 +103,9 @@ export interface StoryCard {
       animationDuration?: number;
       animationDelay?: number;
     };
+    // Styles specific to choice cards
+    borderWidth?: 'none' | 'sm' | 'md' | 'lg';
+    borderColor?: string; // e.g., 'cyan-500'
   };
 }
 
@@ -62,6 +113,7 @@ export interface StoryCard {
 export interface GameData {
   colonyName: string;
   story: StoryCard[];
+  choices: PlayerChoice[];
   templates: Template[];
   entities: Entity[];
 }
