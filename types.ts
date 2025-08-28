@@ -1,5 +1,30 @@
 
 
+export type ConditionOperator = '==' | '!=' | '>' | '<' | '>=' | '<=';
+
+export interface AttributeCondition {
+  type: 'attribute';
+  targetEntityId: string; // ID of the entity to check
+  attributeId: string; // Can be a base attribute or a composite stuff attribute ID
+  operator: ConditionOperator;
+  value: string | number | null;
+}
+
+export interface EntityExistsCondition {
+  type: 'entity_exists';
+  templateId: string;
+  exists: boolean; // true for "exists", false for "does not exist"
+}
+
+export interface HasStuffCondition {
+    type: 'has_stuff';
+    targetEntityId: string;
+    stuffItemId: string; // The specific item ID to check for
+    hasIt: boolean; // true for "has", false for "does not have"
+}
+
+export type Condition = AttributeCondition | EntityExistsCondition | HasStuffCondition;
+
 export interface AttributeDefinition {
   id: string;
   name: string;
@@ -70,6 +95,7 @@ export interface ChoiceOption {
   id: string;
   card: Omit<StoryCard, 'id' | 'choiceId'>;
   outcome: ChoiceOutcome;
+  conditions?: Condition[];
 }
 
 export interface PlayerChoice {
@@ -87,6 +113,7 @@ export interface PlayerChoice {
       cardTemplate: Omit<StoryCard, 'id' | 'choiceId'>; // Placeholders like {entity.name} will be used here.
       // The `value` for the outcome will be the chosen entity's ID.
       outcomeTemplate: Omit<ChoiceOutcomeUpdateEntity, 'value'>; 
+      filterConditions?: Condition[];
   };
   
   styles?: {

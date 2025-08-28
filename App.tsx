@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
@@ -16,6 +12,7 @@ const TEMPLATE_DRONE_ID = 'template_drone_1';
 const TEMPLATE_COLONY_STATS_ID = 'template_colony_stats_1';
 
 const ATTR_BACKSTORY_ID = 'attr_backstory_1';
+const ATTR_ROLE_ID = 'attr_role_1';
 const ATTR_DESCRIPTION_ID = 'attr_desc_1';
 const ATTR_OPERATOR_ID = 'attr_operator_1';
 const ATTR_STATUS_ID = 'attr_status_1';
@@ -27,6 +24,7 @@ const CHOICE_FIRST_PRIORITY_ID = 'choice_1';
 const CHOICE_ASSIGN_OPERATOR_ID = 'choice_2';
 
 const ENTITY_GEOTHERMAL_VENT_ID = 'ps_1';
+const ENTITY_JAX_ID = 'char_1';
 
 const STUFF_SET_SKILLS_ID = 'stuff_set_skills_1';
 const SKILL_ITEM_ACCOUNTING_ID = 'skill_item_accounting_1';
@@ -154,7 +152,18 @@ const initialGameData: GameData = {
           type: 'update_entity',
           targetEntityId: ENTITY_GEOTHERMAL_VENT_ID,
           attributeId: ATTR_OPERATOR_ID,
-        }
+        },
+        // Show only characters who do not have a role assigned.
+        filterConditions: [
+          {
+            type: 'attribute',
+            // targetEntityId is a placeholder here; it will be replaced by the entity being filtered.
+            targetEntityId: '',
+            attributeId: ATTR_ROLE_ID,
+            operator: '==',
+            value: null,
+          }
+        ]
       }
     }
   ],
@@ -166,6 +175,7 @@ const initialGameData: GameData = {
       tags: ['personnel', 'operative'],
       attributes: [
         { id: ATTR_BACKSTORY_ID, name: 'Backstory', type: 'textarea' },
+        { id: ATTR_ROLE_ID, name: 'Role', type: 'string' },
       ],
       includedStuff: [
         {
@@ -214,11 +224,12 @@ const initialGameData: GameData = {
   ],
   entities: [
     {
-      id: 'char_1',
+      id: ENTITY_JAX_ID,
       templateId: TEMPLATE_CHARACTER_ID,
       name: 'Jax "Glitch" Corrigan',
       attributeValues: {
         [ATTR_BACKSTORY_ID]: 'A former corporate netrunner who burned his connections and now keeps the colony\'s systems from frying.',
+        [ATTR_ROLE_ID]: 'Chief Systems Analyst',
         // Value for the 'Level' attribute of the included 'Hacking' skill
         [`${SKILL_ITEM_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5,
       },
@@ -229,6 +240,7 @@ const initialGameData: GameData = {
       name: 'Dr. Aris Thorne',
       attributeValues: {
         [ATTR_BACKSTORY_ID]: 'A bio-engineer with a questionable past, responsible for the colony\'s hydroponics and medical bay.',
+        [ATTR_ROLE_ID]: null,
       },
     },
     {

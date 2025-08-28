@@ -3,8 +3,11 @@
 
 
 
+
+
 import React, { useMemo, useState, useEffect } from 'react';
-import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet } from '../types';
+import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet, Condition } from '../types';
+import { evaluateCondition } from '../services/conditionEvaluator';
 
 interface ResolvedAttribute {
     definition: AttributeDefinition;
@@ -68,7 +71,8 @@ const AttributeDisplay: React.FC<{
     entityMap: Map<string, Entity>
 }> = ({ resolvedAttribute, entityMap }) => {
     const { definition, value } = resolvedAttribute;
-    if (!value) return null;
+    if (value === null || value === undefined) return null;
+
 
     let displayValue: React.ReactNode = value;
 
@@ -186,15 +190,36 @@ const ChoicePresenter: React.FC<{
 
     const choiceOptions = useMemo((): { card: Omit<StoryCard, 'id' | 'choiceId'>, outcome: ChoiceOutcome }[] => {
         if (choice.choiceType === 'static') {
-            return choice.staticOptions || [];
+            const options = choice.staticOptions || [];
+            return options.filter(opt => {
+                if (!opt.conditions || opt.conditions.length === 0) return true;
+                return opt.conditions.every(cond => evaluateCondition(cond, gameData));
+            });
         }
         
         if (choice.choiceType === 'dynamic_from_template' && choice.dynamicConfig) {
-            const { sourceTemplateId, cardTemplate, outcomeTemplate } = choice.dynamicConfig;
+            const { sourceTemplateId, cardTemplate, outcomeTemplate, filterConditions } = choice.dynamicConfig;
             const sourceTemplate = gameData.templates.find(t => t.id === sourceTemplateId);
             if (!sourceTemplate) return [];
             
-            const sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
+            let sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
+
+            if (filterConditions && filterConditions.length > 0) {
+                sourceEntities = sourceEntities.filter(entity => {
+                    return filterConditions.every(cond => {
+                        // For filters, the condition's target is the entity being iterated on.
+                         if (cond.type === 'attribute') {
+                            const conditionForEntity: Condition = { ...cond, targetEntityId: entity.id };
+                            return evaluateCondition(conditionForEntity, gameData);
+                         }
+                         // Other filter types like EntityExists or HasStuff might need different handling
+                         // if they're meant to be relative to the entity, but for now we assume
+                         // they are global checks.
+                        return evaluateCondition(cond, gameData);
+                    })
+                });
+            }
+
 
             return sourceEntities.map(entity => {
                 const parsedCard: Omit<StoryCard, 'id' | 'choiceId'> = {
@@ -212,7 +237,7 @@ const ChoicePresenter: React.FC<{
         }
 
         return [];
-    }, [choice, gameData.entities, gameData.templates]);
+    }, [choice, gameData]);
     
     return (
         <div className="space-y-8">

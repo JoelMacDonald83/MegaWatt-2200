@@ -1,11 +1,14 @@
 
 
+
 import React, { useState, useMemo } from 'react';
-import type { GameData, PlayerChoice, ChoiceOption, StoryCard } from '../../types';
+import type { GameData, PlayerChoice, ChoiceOption, StoryCard, Condition } from '../../types';
 import { StyleRadio, StyleSelect } from '../../components/editor/StyleComponents';
 import { TrashIcon } from '../../components/icons/TrashIcon';
 import { Modal } from '../../components/Modal';
 import { StoryCardEditor } from './StoryCardEditor';
+import { ConditionEditor } from './ConditionEditor';
+import { conditionToString } from '../../services/conditionEvaluator';
 
 interface ChoiceEditorProps {
     initialChoice: PlayerChoice;
@@ -22,9 +25,15 @@ type EditingCardState =
   | { type: 'dynamic'; card: Omit<StoryCard, 'id' | 'choiceId'> }
   | null;
 
+type EditingConditionState =
+  | { type: 'static'; optionId: string; condition: Condition | null; conditionIndex?: number }
+  | { type: 'dynamic'; condition: Condition | null; conditionIndex?: number }
+  | null;
+
 export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSave, onCancel, gameData, isNew, onGenerateImage, isGeneratingImage }) => {
     const [localChoice, setLocalChoice] = useState<PlayerChoice>(() => JSON.parse(JSON.stringify(initialChoice)));
     const [editingCardState, setEditingCardState] = useState<EditingCardState>(null);
+    const [editingConditionState, setEditingConditionState] = useState<EditingConditionState>(null);
 
 
     const updateField = (field: keyof PlayerChoice, value: any) => {
@@ -80,7 +89,6 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     const handleSaveCard = (savedCard: StoryCard) => {
         if (!editingCardState) return;
     
-        // Omit properties that don't belong on a choice card
         const { id, choiceId, ...cardData } = savedCard;
 
         if (editingCardState.type === 'static') {
@@ -94,6 +102,47 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     
         setEditingCardState(null);
     };
+    
+    const handleSaveCondition = (condition: Condition) => {
+        if (!editingConditionState) return;
+
+        if (editingConditionState.type === 'static') {
+            const option = (localChoice.staticOptions || []).find(o => o.id === editingConditionState.optionId);
+            if (!option) return;
+            
+            const newConditions = [...(option.conditions || [])];
+            if (editingConditionState.conditionIndex !== undefined) {
+                newConditions[editingConditionState.conditionIndex] = condition;
+            } else {
+                newConditions.push(condition);
+            }
+            updateStaticOption(editingConditionState.optionId, { conditions: newConditions });
+
+        } else if (editingConditionState.type === 'dynamic') {
+            const newConditions = [...(localChoice.dynamicConfig?.filterConditions || [])];
+             if (editingConditionState.conditionIndex !== undefined) {
+                newConditions[editingConditionState.conditionIndex] = condition;
+            } else {
+                newConditions.push(condition);
+            }
+            setLocalChoice(p => ({ ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }}));
+        }
+        setEditingConditionState(null);
+    };
+
+    const handleRemoveCondition = (type: 'static' | 'dynamic', index: number, optionId?: string) => {
+        if (type === 'static' && optionId) {
+            const option = (localChoice.staticOptions || []).find(o => o.id === optionId);
+            if (!option || !option.conditions) return;
+            const newConditions = option.conditions.filter((_, i) => i !== index);
+            updateStaticOption(optionId, { conditions: newConditions });
+        } else if (type === 'dynamic') {
+            if (!localChoice.dynamicConfig?.filterConditions) return;
+            const newConditions = localChoice.dynamicConfig.filterConditions.filter((_, i) => i !== index);
+            setLocalChoice(p => ({ ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }}));
+        }
+    };
+
 
     const targetEntityForDynamicOutcome = useMemo(() => {
         if (localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig?.outcomeTemplate.targetEntityId) {
@@ -158,12 +207,26 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                         <div className="space-y-3">
                             <h3 className="text-lg font-semibold text-gray-300">Static Options</h3>
                             {(localChoice.staticOptions || []).map(opt => (
-                                <div key={opt.id} className="bg-gray-900/50 p-3 rounded-md border border-gray-700 flex items-center justify-between">
-                                    <p className="text-gray-300">{opt.card.description?.substring(0, 50) || 'Untitled Card'}...</p>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => setEditingCardState({ type: 'static', optionId: opt.id, card: opt.card })} className="text-sm text-cyan-400 hover:text-cyan-300">Edit Card</button>
-                                        <button className="text-sm text-gray-400 hover:text-white">Outcome</button>
-                                        <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4"/></button>
+                                <div key={opt.id} className="bg-gray-900/50 p-3 rounded-md border border-gray-700 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-gray-300">{opt.card.description?.substring(0, 50) || 'Untitled Card'}...</p>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setEditingCardState({ type: 'static', optionId: opt.id, card: opt.card })} className="text-sm text-cyan-400 hover:text-cyan-300">Edit Card</button>
+                                            <button className="text-sm text-gray-400 hover:text-white">Outcome</button>
+                                            <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4"/></button>
+                                        </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-gray-700">
+                                        <h4 className="text-xs font-semibold text-gray-400 mb-1">Conditions (Must all be true)</h4>
+                                        <div className="space-y-1">
+                                            {(opt.conditions || []).map((cond, index) => (
+                                                <div key={index} className="text-xs flex justify-between items-center bg-gray-800 p-1 rounded">
+                                                    <span className="text-gray-300">{conditionToString(cond, gameData)}</span>
+                                                    <button onClick={() => handleRemoveCondition('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-red-500"/></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-xs mt-1 text-cyan-400 hover:text-cyan-300 w-full text-left">+ Add Condition</button>
                                     </div>
                                 </div>
                             ))}
@@ -185,6 +248,20 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                 <button onClick={() => setEditingCardState({ type: 'dynamic', card: localChoice.dynamicConfig!.cardTemplate })} className="w-full text-sm bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded transition duration-300">Edit Card Template</button>
                             </fieldset>
                             
+                             <fieldset className="p-3 border border-gray-700 rounded-md">
+                                <legend className="text-sm font-semibold text-gray-400 px-2">Filter Conditions</legend>
+                                <p className="text-xs text-gray-500 mb-2">Only show entities from the source template if they meet all these conditions.</p>
+                                <div className="space-y-1">
+                                    {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
+                                        <div key={index} className="text-xs flex justify-between items-center bg-gray-800 p-1 rounded">
+                                            <span className="text-gray-300">{conditionToString(cond, gameData, true)}</span>
+                                            <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-3 h-3 text-red-500"/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-xs mt-1 text-cyan-400 hover:text-cyan-300 w-full text-left">+ Add Filter Condition</button>
+                             </fieldset>
+
                              <fieldset className="p-3 border border-gray-700 rounded-md">
                                 <legend className="text-sm font-semibold text-gray-400 px-2">Outcome</legend>
                                 <p className="text-xs text-gray-500 mb-2">Define what happens when the player chooses one of the generated cards. The chosen entity's ID will be used as the value.</p>
@@ -232,6 +309,17 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     </div>
                 )}
             </Modal>
+            
+            {editingConditionState && (
+                <ConditionEditor
+                    isOpen={!!editingConditionState}
+                    onClose={() => setEditingConditionState(null)}
+                    onSave={handleSaveCondition}
+                    gameData={gameData}
+                    initialCondition={editingConditionState.condition}
+                    isFilter={editingConditionState.type === 'dynamic'}
+                />
+            )}
         </div>
     );
 };
