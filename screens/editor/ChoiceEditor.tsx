@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import type { GameData, PlayerChoice, ChoiceOption, StoryCard } from '../../types';
 import { StyleRadio, StyleSelect } from '../../components/editor/StyleComponents';
@@ -28,6 +29,19 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
 
     const updateField = (field: keyof PlayerChoice, value: any) => {
         setLocalChoice(prev => ({ ...prev, [field]: value }));
+    };
+    
+    const updatePromptStyle = (key: keyof NonNullable<PlayerChoice['styles']>['promptStyles'], value: any) => {
+        setLocalChoice(prev => ({
+            ...prev,
+            styles: {
+                ...(prev.styles || {}),
+                promptStyles: {
+                    ...(prev.styles?.promptStyles || {}),
+                    [key]: value
+                }
+            }
+        }));
     };
 
     const handleChoiceTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,6 +124,32 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     <label className="block text-sm font-medium text-gray-400">Player Prompt</label>
                     <input type="text" value={localChoice.prompt} onChange={e => updateField('prompt', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
                 </div>
+
+                <fieldset className="space-y-2 pt-4 border-t border-gray-700">
+                    <legend className="text-sm font-semibold text-gray-400 -mb-2 px-1">Prompt Styling</legend>
+                    <div className="grid grid-cols-2 gap-4">
+                        <StyleSelect 
+                            label="Font Size" 
+                            value={localChoice.styles?.promptStyles?.fontSize || 'large'}
+                            onChange={e => updatePromptStyle('fontSize', e.target.value)}
+                        >
+                            <option value="normal">Normal</option>
+                            <option value="large">Large</option>
+                            <option value="xlarge">X-Large</option>
+                            <option value="xxlarge">XX-Large</option>
+                        </StyleSelect>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-400 mb-1">Text Color Class</label>
+                            <input 
+                                type="text" 
+                                value={localChoice.styles?.promptStyles?.textColor || 'text-cyan-200'}
+                                onChange={e => updatePromptStyle('textColor', e.target.value)}
+                                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                                placeholder="e.g. text-cyan-200"
+                            />
+                        </div>
+                    </div>
+                </fieldset>
                 
                  <div className="space-y-4 pt-4 border-t border-gray-700">
                     <StyleRadio label="Choice Type" name="choiceType" value={localChoice.choiceType} onChange={handleChoiceTypeChange} options={[{value: 'static', label: 'Static'}, {value: 'dynamic_from_template', label: 'Dynamic'}]} />

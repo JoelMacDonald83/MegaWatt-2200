@@ -2,6 +2,7 @@
 
 
 
+
 import React, { useState } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
@@ -19,11 +20,18 @@ const ATTR_DESCRIPTION_ID = 'attr_desc_1';
 const ATTR_OPERATOR_ID = 'attr_operator_1';
 const ATTR_STATUS_ID = 'attr_status_1';
 const ATTR_POWER_SOURCE_ID = 'attr_power_source_1';
+const ATTR_SKILL_LEVEL_ID = 'attr_skill_level_1';
+const ATTR_SKILL_SPEC_ID = 'attr_skill_spec_1';
 
 const CHOICE_FIRST_PRIORITY_ID = 'choice_1';
 const CHOICE_ASSIGN_OPERATOR_ID = 'choice_2';
 
 const ENTITY_GEOTHERMAL_VENT_ID = 'ps_1';
+
+const STUFF_SET_SKILLS_ID = 'stuff_set_skills_1';
+const SKILL_ITEM_ACCOUNTING_ID = 'skill_item_accounting_1';
+const SKILL_ITEM_HACKING_ID = 'skill_item_hacking_1';
+
 
 const initialGameData: GameData = {
   colonyName: 'Aethelburg Node',
@@ -35,7 +43,7 @@ const initialGameData: GameData = {
       styles: {
         textPosition: 'middle',
         textAlign: 'center',
-        textColor: 'light',
+        textColor: 'text-white',
         overlayStrength: 'medium',
         backgroundAnimation: 'kenburns-normal',
         backgroundAnimationDuration: 45,
@@ -58,7 +66,7 @@ const initialGameData: GameData = {
        styles: {
         textPosition: 'bottom',
         textAlign: 'center',
-        textColor: 'light',
+        textColor: 'text-white',
         overlayStrength: 'heavy',
         backgroundAnimation: 'kenburns-subtle',
         fontFamily: 'sans',
@@ -159,6 +167,12 @@ const initialGameData: GameData = {
       attributes: [
         { id: ATTR_BACKSTORY_ID, name: 'Backstory', type: 'textarea' },
       ],
+      includedStuff: [
+        {
+          setId: STUFF_SET_SKILLS_ID,
+          itemIds: [SKILL_ITEM_HACKING_ID]
+        }
+      ]
     },
     {
       id: TEMPLATE_POWER_SOURCE_ID,
@@ -205,6 +219,8 @@ const initialGameData: GameData = {
       name: 'Jax "Glitch" Corrigan',
       attributeValues: {
         [ATTR_BACKSTORY_ID]: 'A former corporate netrunner who burned his connections and now keeps the colony\'s systems from frying.',
+        // Value for the 'Level' attribute of the included 'Hacking' skill
+        [`${SKILL_ITEM_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5,
       },
     },
     {
@@ -225,6 +241,34 @@ const initialGameData: GameData = {
       },
     },
   ],
+  stuff: [
+    {
+      id: STUFF_SET_SKILLS_ID,
+      name: 'Skills',
+      description: 'Abilities and proficiencies for characters.',
+      items: [
+        {
+          id: SKILL_ITEM_ACCOUNTING_ID,
+          name: 'Accounting',
+          description: 'Proficiency in managing financial records and resources.',
+          category: 'Financial',
+          attributes: [
+            { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' },
+            { id: ATTR_SKILL_SPEC_ID, name: 'Specialization', type: 'string'},
+          ]
+        },
+        {
+          id: SKILL_ITEM_HACKING_ID,
+          name: 'Hacking',
+          description: 'Skill in bypassing digital security and manipulating networks.',
+          category: 'Technical',
+          attributes: [
+            { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' },
+          ]
+        }
+      ]
+    }
+  ]
 };
 
 

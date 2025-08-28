@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef } from 'react';
 import type { StoryCard, PlayerChoice } from '../../types';
 import { StyleSelect, StyleNumberInput, StyleRadio } from '../../components/editor/StyleComponents';
@@ -71,7 +72,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
         return {
             textPosition: s.textPosition || 'bottom',
             textAlign: s.textAlign || 'center',
-            textColor: s.textColor || 'light',
+            textColor: s.textColor || 'text-white',
             overlayStrength: s.overlayStrength || 'medium',
             backgroundAnimation: s.backgroundAnimation || 'kenburns-normal',
             backgroundAnimationDuration: s.backgroundAnimationDuration || 30,
@@ -100,9 +101,9 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
     const previewPositionClasses = { top: 'justify-start', middle: 'justify-center', bottom: 'justify-end' }[styles.textPosition];
     const previewTextAlignClasses = { left: 'text-left', center: 'text-center', right: 'text-right' }[styles.textAlign];
     const previewFlexAlignClasses = { left: 'items-start', center: 'items-center', right: 'items-end' }[styles.textAlign];
-    const previewColorClass = styles.textColor === 'light' ? 'text-white' : 'text-gray-900';
+    const previewColorClass = styles.textColor;
     const previewFontClass = { sans: 'font-sans', serif: 'font-serif', mono: 'font-mono' }[styles.fontFamily];
-    const previewFontSizeClass = { normal: 'text-[0.5rem] leading-tight', large: 'text-[0.6rem] leading-tight', xlarge: 'text-[0.7rem] leading-tight' }[styles.fontSize];
+    const previewFontSizeClass = { normal: 'text-[0.5rem] leading-tight', large: 'text-[0.6rem] leading-tight', xlarge: 'text-[0.7rem] leading-tight', xxlarge: 'text-[0.8rem] leading-tight' }[styles.fontSize];
     const previewWidthClass = { narrow: 'w-1/2', medium: 'w-3/4', wide: 'w-full' }[styles.textWidth];
     const previewBgEffectClass = { none: '', blur: 'blur-sm', darken: 'brightness-75' }[styles.backgroundEffect];
     
@@ -146,9 +147,18 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                         {/* Text Styling */}
                         <StyleSelect label="Text Position" value={styles.textPosition} onChange={e => updateStyle('textPosition', e.target.value)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></StyleSelect>
                         <StyleSelect label="Text Alignment" value={styles.textAlign} onChange={e => updateStyle('textAlign', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
-                        <StyleRadio label="Text Color" name="textColor" value={styles.textColor} onChange={e => updateStyle('textColor', e.target.value)} options={[{value: 'light', label: 'Light'}, {value: 'dark', label: 'Dark'}]} />
+                        <div>
+                            <label className="block text-xs font-medium text-gray-400 mb-1">Text Color Class</label>
+                            <input
+                                type="text"
+                                value={styles.textColor}
+                                onChange={e => updateStyle('textColor', e.target.value)}
+                                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                                placeholder="e.g. text-white"
+                            />
+                        </div>
                         <StyleSelect label="Font Family" value={styles.fontFamily} onChange={e => updateStyle('fontFamily', e.target.value)}><option value="sans">Sans-Serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></StyleSelect>
-                        <StyleSelect label="Font Size" value={styles.fontSize} onChange={e => updateStyle('fontSize', e.target.value)}><option value="normal">Normal</option><option value="large">Large</option><option value="xlarge">X-Large</option></StyleSelect>
+                        <StyleSelect label="Font Size" value={styles.fontSize} onChange={e => updateStyle('fontSize', e.target.value)}><option value="normal">Normal</option><option value="large">Large</option><option value="xlarge">X-Large</option><option value="xxlarge">XX-Large</option></StyleSelect>
                         <StyleSelect label="Text Width" value={styles.textWidth} onChange={e => updateStyle('textWidth', e.target.value)}><option value="narrow">Narrow</option><option value="medium">Medium</option><option value="wide">Wide</option></StyleSelect>
                         
                         {/* Background & Overlay */}

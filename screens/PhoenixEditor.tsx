@@ -1,6 +1,7 @@
 
+
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import type { GameData, Template, Entity, StoryCard, PlayerChoice } from '../types';
+import type { GameData, Template, Entity, StoryCard, PlayerChoice, StuffSet } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
 import { CubeTransparentIcon } from '../components/icons/CubeTransparentIcon';
 import { RectangleStackIcon } from '../components/icons/RectangleStackIcon';
@@ -19,16 +20,19 @@ import { EntityEditor } from './editor/EntityEditor';
 import { StoryCardEditor } from './editor/StoryCardEditor';
 import { ChoiceEditor } from './editor/ChoiceEditor';
 import { generateImageFromPrompt, generateStoryContent } from '../services/geminiService';
+import { ArchiveBoxIcon } from '../components/icons/ArchiveBoxIcon';
+import { StuffEditor } from './editor/StuffEditor';
 
 
-type EditorTabs = 'world' | 'story' | 'gameplay' | 'templates' | 'entities';
+type EditorTabs = 'world' | 'story' | 'gameplay' | 'stuff' | 'templates' | 'entities';
 
 type DeletionModalState = 
   | { type: 'none' }
   | { type: 'delete-template'; template: Template }
   | { type: 'delete-entity'; entity: Entity }
   | { type: 'delete-story-card'; card: StoryCard }
-  | { type: 'delete-choice'; choice: PlayerChoice };
+  | { type: 'delete-choice'; choice: PlayerChoice }
+  | { type: 'delete-stuff-set'; stuffSet: StuffSet };
 
 type EditingState =
   | { mode: 'none' }
@@ -39,7 +43,9 @@ type EditingState =
   | { mode: 'edit-story-card'; card: StoryCard }
   | { mode: 'new-story-card'; card: StoryCard }
   | { mode: 'edit-choice'; choice: PlayerChoice }
-  | { mode: 'new-choice'; choice: PlayerChoice };
+  | { mode: 'new-choice'; choice: PlayerChoice }
+  | { mode: 'edit-stuff-set'; stuffSet: StuffSet }
+  | { mode: 'new-stuff-set'; stuffSet: StuffSet };
 
 interface PhoenixEditorProps {
   gameData: GameData;
@@ -84,6 +90,11 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
       const newChoice: PlayerChoice = { id: newItemId, name: 'New Choice', prompt: 'What will you do?', choiceType: 'static', staticOptions: [] };
       setSelectedItemId(null);
       setEditingState({ mode: 'new-choice', choice: newChoice });
+    } else if (activeTab === 'stuff') {
+      const newItemId = `stuff_set_${Date.now()}`;
+      const newStuffSet: StuffSet = { id: newItemId, name: 'New Set', description: '', items: [] };
+      setSelectedItemId(null);
+      setEditingState({ mode: 'new-stuff-set', stuffSet: newStuffSet });
     }
   };
 
@@ -114,6 +125,17 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
         story: prev.story.map(card => card.choiceId === deletionModalState.choice.id ? { ...card, choiceId: undefined } : card),
       }));
       if (selectedItemId === deletionModalState.choice.id) setSelectedItemId(null);
+    } else if (deletionModalState.type === 'delete-stuff-set') {
+       setGameData(prev => ({
+        ...prev,
+        stuff: prev.stuff.filter(s => s.id !== deletionModalState.stuffSet.id),
+        // Also remove this stuff from any templates that use it
+        templates: prev.templates.map(t => ({
+          ...t,
+          includedStuff: (t.includedStuff || []).filter(is => is.setId !== deletionModalState.stuffSet.id),
+        }))
+      }));
+      if (selectedItemId === deletionModalState.stuffSet.id) setSelectedItemId(null);
     }
     setDeletionModalState({ type: 'none' });
   };
@@ -156,6 +178,16 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
     }
     setEditingState({ mode: 'none' });
     setSelectedItemId(choiceToSave.id);
+  };
+
+  const handleSaveStuffSet = (stuffSetToSave: StuffSet) => {
+    if (editingState.mode === 'new-stuff-set') {
+      setGameData(prev => ({ ...prev, stuff: [...prev.stuff, stuffSetToSave] }));
+    } else {
+      setGameData(prev => ({ ...prev, stuff: prev.stuff.map(s => s.id === stuffSetToSave.id ? stuffSetToSave : s)}));
+    }
+    setEditingState({ mode: 'none' });
+    setSelectedItemId(stuffSetToSave.id);
   };
 
   const handleMoveStoryCard = (cardId: string, direction: 'up' | 'down') => {
@@ -263,15 +295,16 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
       case 'entities': return filteredEntities;
       case 'story': return gameData.story;
       case 'gameplay': return gameData.choices;
+      case 'stuff': return gameData.stuff;
       default: return [];
     }
-  }, [activeTab, gameData.templates, gameData.story, gameData.choices, filteredEntities]);
+  }, [activeTab, gameData, filteredEntities]);
 
   const currentSelectedItem = useMemo(() => {
     if (!selectedItemId) return null;
-    const allItems = [...gameData.templates, ...gameData.entities, ...gameData.story, ...gameData.choices];
+    const allItems = [...gameData.templates, ...gameData.entities, ...gameData.story, ...gameData.choices, ...gameData.stuff];
     return allItems.find(item => item.id === selectedItemId) || null;
-  }, [selectedItemId, gameData.templates, gameData.entities, gameData.story, gameData.choices]);
+  }, [selectedItemId, gameData]);
 
 
   const renderSummary = () => {
@@ -279,6 +312,24 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
       return <div className="flex items-center justify-center h-full text-gray-500 p-8 text-center">
         {editingState.mode === 'none' ? 'Select an item from the list to view its summary, or create a new one.' : 'Editing...'}
         </div>;
+    }
+
+    if ('items' in currentSelectedItem) { // It's a StuffSet
+      const stuffSet = currentSelectedItem as StuffSet;
+      return (
+        <div className="p-8 space-y-6">
+          <h2 className="text-3xl font-bold text-cyan-300">{stuffSet.name}</h2>
+          <p className="text-gray-400">{stuffSet.description || <i>No description.</i>}</p>
+          <div>
+            <h4 className="text-lg font-semibold text-gray-300 mb-2">Items in this Set</h4>
+            <ul className="list-disc list-inside space-y-1 text-gray-400">
+              {stuffSet.items.length > 0 ? stuffSet.items.map(item => (
+                <li key={item.id}>{item.name} <span className="text-gray-500">({item.category})</span></li>
+              )) : <li className="text-gray-500 text-sm list-none">No items defined in this set.</li>}
+            </ul>
+          </div>
+        </div>
+      );
     }
 
     if ('prompt' in currentSelectedItem) { // It's a PlayerChoice
@@ -418,6 +469,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
       case 'entities': return 'Add New Entity';
       case 'story': return 'Add New Story Card';
       case 'gameplay': return 'Add New Choice';
+      case 'stuff': return 'Add New Set';
       default: return '';
     }
   };
@@ -431,7 +483,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                 initialTemplate={editingState.template}
                 onSave={handleSaveTemplate}
                 onCancel={handleCancelEdit}
-                templates={gameData.templates}
+                gameData={gameData}
                 isNew={editingState.mode === 'new-template'}
             />;
         case 'new-entity':
@@ -470,6 +522,15 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                 onGenerateImage={handleGenerateImage}
                 isGeneratingImage={isGenerating === 'story_image'}
             />;
+        case 'new-stuff-set':
+        case 'edit-stuff-set':
+            return <StuffEditor
+                key={editingState.stuffSet.id}
+                initialStuffSet={editingState.stuffSet}
+                onSave={handleSaveStuffSet}
+                onCancel={handleCancelEdit}
+                isNew={editingState.mode === 'new-stuff-set'}
+            />;
         case 'none':
         default:
             return <div className="flex-1 bg-gray-800 overflow-y-auto">{renderSummary()}</div>;
@@ -482,6 +543,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
         <TabButton tab="world" icon={<GlobeAltIcon className="w-6 h-6"/>} label="World" />
         <TabButton tab="story" icon={<BookOpenIcon className="w-6 h-6"/>} label="Story" />
         <TabButton tab="gameplay" icon={<BoltIcon className="w-6 h-6"/>} label="Gameplay" />
+        <TabButton tab="stuff" icon={<ArchiveBoxIcon className="w-6 h-6"/>} label="Stuff" />
         <TabButton tab="templates" icon={<CubeTransparentIcon className="w-6 h-6"/>} label="Templates" />
         <TabButton tab="entities" icon={<RectangleStackIcon className="w-6 h-6"/>} label="Entities" />
       </nav>
@@ -512,14 +574,16 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                 {listItems.length > 0 ? (
                     listItems.map((item: any, index: number) => {
                         const isStoryCard = 'imagePrompt' in item && !('prompt' in item);
-                        const isTemplate = 'attributes' in item;
+                        const isTemplate = 'attributes' in item && !('items' in item);
                         const isChoice = 'prompt' in item;
+                        const isStuffSet = 'items' in item;
 
                         const handleEdit = () => {
                             setSelectedItemId(item.id);
                              if (isTemplate) setEditingState({ mode: 'edit-template', template: item as Template });
                              else if (isStoryCard) setEditingState({ mode: 'edit-story-card', card: item as StoryCard });
                              else if (isChoice) setEditingState({ mode: 'edit-choice', choice: item as PlayerChoice });
+                             else if (isStuffSet) setEditingState({ mode: 'edit-stuff-set', stuffSet: item as StuffSet });
                              else setEditingState({ mode: 'edit-entity', entity: item as Entity });
                         };
 
@@ -527,6 +591,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                              if (isTemplate) setDeletionModalState({ type: 'delete-template', template: item as Template });
                              else if (isStoryCard) setDeletionModalState({ type: 'delete-story-card', card: item as StoryCard });
                              else if (isChoice) setDeletionModalState({ type: 'delete-choice', choice: item as PlayerChoice });
+                             else if (isStuffSet) setDeletionModalState({ type: 'delete-stuff-set', stuffSet: item as StuffSet });
                              else setDeletionModalState({ type: 'delete-entity', entity: item as Entity });
                         }
 
@@ -555,6 +620,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                         {activeTab === 'entities' && "No entities for this template."}
                         {activeTab === 'story' && "No story cards yet."}
                         {activeTab === 'gameplay' && "No choices defined yet."}
+                        {activeTab === 'stuff' && "No 'Stuff' sets created yet."}
                         <br/>
                          Click the "Add New..." button above to get started.
                     </li>
@@ -612,10 +678,13 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
             {deletionModalState.type === 'delete-entity' && deletionModalState.entity.name}
              {deletionModalState.type === 'delete-story-card' && 'this story card'}
              {deletionModalState.type === 'delete-choice' && deletionModalState.choice.name}
+             {deletionModalState.type === 'delete-stuff-set' && deletionModalState.stuffSet.name}
           </strong>?</p>
           {deletionModalState.type === 'delete-template' && <p className="mt-2 text-sm text-yellow-400">This will also delete all entities created from this template. This action cannot be undone.</p>}
           {deletionModalState.type === 'delete-choice' && <p className="mt-2 text-sm text-yellow-400">Any story cards using this choice will be unlinked. This action cannot be undone.</p>}
-           {deletionModalState.type !== 'none' && deletionModalState.type !== 'delete-template' && deletionModalState.type !== 'delete-choice' && <p className="mt-2 text-sm text-yellow-400">This action cannot be undone.</p>}
+          {deletionModalState.type === 'delete-stuff-set' && <p className="mt-2 text-sm text-yellow-400">Any templates using this set will have it removed. This action cannot be undone.</p>}
+
+          {deletionModalState.type !== 'none' && !['delete-template', 'delete-choice', 'delete-stuff-set'].includes(deletionModalState.type) && <p className="mt-2 text-sm text-yellow-400">This action cannot be undone.</p>}
         </div>
         <div className="mt-6 flex justify-end space-x-3">
           <button onClick={() => setDeletionModalState({ type: 'none' })} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>

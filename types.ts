@@ -8,12 +8,33 @@ export interface AttributeDefinition {
   referencedTemplateId?: string | null;
 }
 
+export interface StuffItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  attributes: AttributeDefinition[];
+}
+
+export interface StuffSet {
+  id: string;
+  name: string;
+  description: string;
+  items: StuffItem[];
+}
+
+export interface IncludedStuff {
+  setId: string; // ID of the StuffSet
+  itemIds: string[]; // Array of StuffItem IDs included from that set
+}
+
 export interface Template {
   id: string;
   name: string;
   description: string;
   tags: string[];
   attributes: AttributeDefinition[];
+  includedStuff?: IncludedStuff[];
 }
 
 export interface Entity {
@@ -70,6 +91,10 @@ export interface PlayerChoice {
   
   styles?: {
       layout?: 'grid' | 'carousel';
+      promptStyles?: {
+          fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
+          textColor?: string; // e.g., 'text-cyan-200'
+      }
   }
 }
 
@@ -83,12 +108,12 @@ export interface StoryCard {
   styles?: {
     textPosition?: 'top' | 'middle' | 'bottom';
     textAlign?: 'left' | 'center' | 'right';
-    textColor?: 'light' | 'dark';
+    textColor?: string; // e.g. 'text-white'
     overlayStrength?: 'none' | 'light' | 'medium' | 'heavy';
     backgroundAnimation?: 'none' | 'kenburns-subtle' | 'kenburns-normal' | 'pan-left' | 'pan-right' | 'zoom-out';
     backgroundAnimationDuration?: number;
     fontFamily?: 'sans' | 'serif' | 'mono';
-    fontSize?: 'normal' | 'large' | 'xlarge';
+    fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
     textWidth?: 'narrow' | 'medium' | 'wide';
     backgroundEffect?: 'none' | 'blur' | 'darken';
     cardTransition?: 'fade' | 'slide-left' | 'slide-up' | 'zoom-in' | 'dissolve';
@@ -116,4 +141,5 @@ export interface GameData {
   choices: PlayerChoice[];
   templates: Template[];
   entities: Entity[];
+  stuff: StuffSet[];
 }

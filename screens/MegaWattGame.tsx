@@ -2,46 +2,129 @@
 
 
 
+
 import React, { useMemo, useState, useEffect } from 'react';
-import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption } from '../types';
+import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet } from '../types';
+
+interface ResolvedAttribute {
+    definition: AttributeDefinition;
+    value: string | number | null;
+}
+
+interface ResolvedStuffItem {
+    name: string;
+    attributes: ResolvedAttribute[];
+}
+interface ResolvedEntityAttributes {
+    templateAttributes: ResolvedAttribute[];
+    stuff: {
+        setName: string;
+        items: ResolvedStuffItem[];
+    }[];
+}
+
+const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEntityAttributes => {
+    const template = gameData.templates.find(t => t.id === entity.templateId);
+    if (!template) {
+        return { templateAttributes: [], stuff: [] };
+    }
+
+    const templateAttributes: ResolvedAttribute[] = template.attributes.map(attrDef => ({
+        definition: attrDef,
+        value: entity.attributeValues[attrDef.id] ?? null
+    }));
+
+    const stuff: ResolvedEntityAttributes['stuff'] = (template.includedStuff || []).map(included => {
+        const stuffSet = gameData.stuff.find(s => s.id === included.setId);
+        if (!stuffSet) return null;
+
+        const items: ResolvedStuffItem[] = included.itemIds.map(itemId => {
+            const item = stuffSet.items.find(i => i.id === itemId);
+            if (!item) return null;
+
+            const attributes: ResolvedAttribute[] = item.attributes.map(attrDef => ({
+                definition: attrDef,
+                value: entity.attributeValues[`${item.id}_${attrDef.id}`] ?? null
+            }));
+
+            return { name: item.name, attributes };
+        }).filter((i): i is ResolvedStuffItem => i !== null);
+
+        return { setName: stuffSet.name, items };
+
+    }).filter((s): s is { setName: string; items: ResolvedStuffItem[] } => s !== null);
+
+    return { templateAttributes, stuff };
+};
+
 
 interface MegaWattGameProps {
   gameData: GameData;
   onChoiceMade: (outcome: ChoiceOutcome) => void;
 }
 
+const AttributeDisplay: React.FC<{
+    resolvedAttribute: ResolvedAttribute,
+    entityMap: Map<string, Entity>
+}> = ({ resolvedAttribute, entityMap }) => {
+    const { definition, value } = resolvedAttribute;
+    if (!value) return null;
+
+    let displayValue: React.ReactNode = value;
+
+    if (definition.type === 'entity_reference' && typeof value === 'string') {
+        displayValue = entityMap.get(value)?.name || <span className="text-gray-500 italic">Unknown Reference</span>;
+    } else if (typeof value === 'string' && value.length > 150) {
+            displayValue = <p className="text-gray-400 whitespace-pre-wrap">{value}</p>;
+    } else {
+            displayValue = <span className="text-gray-200">{String(value)}</span>
+    }
+
+    return (
+        <div className="grid grid-cols-3 gap-2">
+            <span className="text-gray-500 font-semibold col-span-1">{definition.name}</span>
+            <div className="col-span-2">{displayValue}</div>
+        </div>
+    );
+};
+
 const EntityCard: React.FC<{ 
     entity: Entity; 
-    template: Template;
+    gameData: GameData;
     entityMap: Map<string, Entity>;
-}> = ({ entity, template, entityMap }) => (
-    <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 shadow-lg transform hover:-translate-y-1 transition-transform duration-300 flex flex-col">
-        <h3 className="text-xl font-bold text-cyan-300 mb-4">{entity.name}</h3>
-        <div className="space-y-3 text-sm flex-grow">
-        {template.attributes.map(attr => {
-            const value = entity.attributeValues[attr.id];
-            if (!value) return null;
+}> = ({ entity, gameData, entityMap }) => {
+    
+    const resolvedAttributes = useMemo(() => resolveEntityAttributes(entity, gameData), [entity, gameData]);
 
-            let displayValue: React.ReactNode = value;
+    return (
+        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 shadow-lg transform hover:-translate-y-1 transition-transform duration-300 flex flex-col">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">{entity.name}</h3>
+            <div className="space-y-3 text-sm flex-grow">
+                {resolvedAttributes.templateAttributes.map(resAttr => (
+                    <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
+                ))}
 
-            if (attr.type === 'entity_reference' && typeof value === 'string') {
-                displayValue = entityMap.get(value)?.name || <span className="text-gray-500 italic">Unknown Reference</span>;
-            } else if (typeof value === 'string' && value.length > 150) {
-                 displayValue = <p className="text-gray-400 whitespace-pre-wrap">{value}</p>;
-            } else {
-                 displayValue = <span className="text-gray-200">{String(value)}</span>
-            }
-
-            return (
-                <div key={attr.id} className="grid grid-cols-3 gap-2">
-                    <span className="text-gray-500 font-semibold col-span-1">{attr.name}</span>
-                    <div className="col-span-2">{displayValue}</div>
-                </div>
-            )
-        })}
+                {resolvedAttributes.stuff.map(stuffGroup => (
+                    <div key={stuffGroup.setName} className="pt-3 mt-3 border-t border-gray-700/50">
+                        <h4 className="text-teal-400 font-semibold text-base mb-2">{stuffGroup.setName}</h4>
+                        <div className="space-y-3 pl-2">
+                            {stuffGroup.items.map(item => (
+                                <div key={item.name}>
+                                    <p className="text-gray-300 font-bold mb-1">{item.name}</p>
+                                    <div className="space-y-2 pl-2 border-l border-gray-600">
+                                      {item.attributes.map(resAttr => (
+                                          <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
+                                      ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 
 const parsePlaceholders = (text: string | undefined, entity: Entity, template: Template): string => {
@@ -63,9 +146,9 @@ const SelectableCard: React.FC<{ card: Omit<StoryCard, 'id'>, onClick: () => voi
     const styles = useMemo(() => {
         const s = card.styles || {};
         return {
-            textColor: s.textColor || 'light',
+            textColor: s.textColor || 'text-white',
             fontFamily: s.fontFamily || 'sans',
-            fontSize: { normal: 'text-base', large: 'text-lg', xlarge: 'text-xl' }[s.fontSize || 'normal'],
+            fontSize: { normal: 'text-base', large: 'text-lg', xlarge: 'text-xl', xxlarge: 'text-2xl' }[s.fontSize || 'normal'],
             textAlign: { left: 'text-left', center: 'text-center', right: 'text-right' }[s.textAlign || 'center'],
             borderWidth: { none: 'border-0', sm: 'border', md: 'border-2', lg: 'border-4' }[s.borderWidth || 'md'],
             borderColor: `border-${s.borderColor || 'cyan-500'}`
@@ -92,6 +175,15 @@ const ChoicePresenter: React.FC<{
     onComplete: (outcome: ChoiceOutcome) => void;
 }> = ({ choice, gameData, onComplete }) => {
     
+    const promptFontSizeClass = {
+        normal: 'text-xl',
+        large: 'text-2xl',
+        xlarge: 'text-3xl',
+        xxlarge: 'text-4xl',
+    }[choice.styles?.promptStyles?.fontSize || 'normal'];
+
+    const promptTextColorClass = choice.styles?.promptStyles?.textColor || 'text-cyan-200';
+
     const choiceOptions = useMemo((): { card: Omit<StoryCard, 'id' | 'choiceId'>, outcome: ChoiceOutcome }[] => {
         if (choice.choiceType === 'static') {
             return choice.staticOptions || [];
@@ -124,7 +216,7 @@ const ChoicePresenter: React.FC<{
     
     return (
         <div className="space-y-8">
-            <p className="text-xl text-cyan-200 text-center">{choice.prompt}</p>
+            <p className={`text-center transition-colors duration-300 ${promptFontSizeClass} ${promptTextColorClass}`}>{choice.prompt}</p>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
                 {choiceOptions.map((option, index) => (
                     <SelectableCard key={index} card={option.card} onClick={() => onComplete(option.outcome)} />
@@ -142,7 +234,7 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
         return {
             textPosition: s.textPosition || 'bottom',
             textAlign: s.textAlign || 'center',
-            textColor: s.textColor || 'light',
+            textColor: s.textColor || 'text-white',
             overlayStrength: s.overlayStrength || 'medium',
             backgroundAnimation: s.backgroundAnimation || 'kenburns-normal',
             backgroundAnimationDuration: s.backgroundAnimationDuration || 30,
@@ -168,12 +260,12 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
     // CSS Classes
     const positionClass = { top: 'justify-start pt-12 md:pt-24', middle: 'justify-center', bottom: 'justify-end pb-12 md:pb-24' }[styles.textPosition];
     const textAlignClass = { left: 'text-left items-start', center: 'text-center items-center', right: 'text-right items-end' }[styles.textAlign];
-    const textColorClass = styles.textColor === 'light' ? 'text-white' : 'text-gray-900';
-    const textShadowClass = styles.textColor === 'light' ? 'shadow-black [text-shadow:0_2px_10px_var(--tw-shadow-color)]' : 'shadow-white/50 [text-shadow:0_2px_10px_var(--tw-shadow-color)]';
+    const textColorClass = styles.textColor;
+    const textShadowClass = '[text-shadow:0_2px_10px_rgba(0,0,0,0.5)]';
     const overlayClass = { none: '', light: 'bg-gradient-to-t from-black/40 via-black/20 to-transparent', medium: 'bg-gradient-to-t from-black/80 via-black/50 to-transparent', heavy: 'bg-gradient-to-t from-black/95 via-black/70 to-black/20' }[styles.overlayStrength];
     const backgroundEffectClass = { none: '', blur: 'blur-md', darken: 'brightness-75' }[styles.backgroundEffect];
     const fontFamilyClass = { sans: 'font-sans', serif: 'font-serif', mono: 'font-mono' }[styles.fontFamily];
-    const fontSizeClass = { normal: 'text-xl md:text-3xl lg:text-4xl', large: 'text-2xl md:text-4xl lg:text-5xl', xlarge: 'text-3xl md:text-5xl lg:text-6xl' }[styles.fontSize];
+    const fontSizeClass = { normal: 'text-xl md:text-3xl lg:text-4xl', large: 'text-2xl md:text-4xl lg:text-5xl', xlarge: 'text-3xl md:text-5xl lg:text-6xl', xxlarge: 'text-4xl md:text-6xl lg:text-7xl' }[styles.fontSize];
     const textWidthClass = { narrow: 'max-w-2xl', medium: 'max-w-4xl', wide: 'max-w-7xl' }[styles.textWidth];
     
     // Foreground Image Classes
@@ -295,7 +387,7 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                                 <h2 className="text-3xl font-bold text-teal-300 border-b-2 border-teal-500/30 pb-2 mb-6">{template.name}s</h2>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {templateEntities.map(entity => (
-                                        <EntityCard key={entity.id} entity={entity} template={template} entityMap={entityMap} />
+                                        <EntityCard key={entity.id} entity={entity} gameData={gameData} entityMap={entityMap} />
                                     ))}
                                 </div>
                             </section>
