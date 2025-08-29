@@ -177,11 +177,16 @@ export interface NewsItem {
   };
 }
 
+export interface ShowcaseImage {
+  id: string;
+  prompt: string;
+  base64?: string;
+}
+
 export interface GameMenuSettings {
   description: string;
   tags: string[];
-  backgroundImagePrompt: string;
-  backgroundImageBase64?: string;
+  showcaseImages: ShowcaseImage[];
   news: NewsItem[];
   credits: string;
 }
@@ -198,12 +203,42 @@ export interface GameData {
   menuSettings: GameMenuSettings;
 }
 
+// -- Launcher-specific types --
+export type GameListLayout = 'grid' | 'list';
+export type GameCardHoverEffect = 'lift' | 'glow' | 'none';
+
+export interface GameCardStyle {
+  showColonyName: boolean;
+  imageAspectRatio: '16/9' | '4/3' | '1/1' | 'auto';
+  imageDisplay: 'single' | 'slider';
+  hoverEffect: GameCardHoverEffect;
+  backgroundColor: string; // hex color
+  borderColor: string; // hex color
+  titleColor: string; // hex color
+  textColor: string; // hex color
+  buttonColor: string; // hex color
+  buttonTextColor: string; // hex color
+}
+
+export type GameListBackgroundType = 'transparent' | 'solid' | 'gradient';
+
+export interface GameListStyle {
+    backgroundType: GameListBackgroundType;
+    backgroundColor1: string; // hex color
+    backgroundColor2: string; // hex color for gradient
+    padding: number; // in pixels
+    borderRadius: number; // in pixels
+}
+
 // Settings for the main company launcher
 export interface CompanyLauncherSettings {
   companyName: string;
   news: NewsItem[];
   backgroundImagePrompt?: string;
   backgroundImageBase64?: string;
+  gameListLayout?: GameListLayout;
+  gameCardStyle?: Partial<GameCardStyle>;
+  gameListStyle?: Partial<GameListStyle>;
 }
 
 // Top-level data structure for the entire application

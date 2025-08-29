@@ -49,8 +49,13 @@ const initialGameData: GameData = {
   menuSettings: {
     description: 'A sputtering candle in the dark. As its new Administrator, you must make the hard choices that will determine whether that candle is snuffed out, or burns bright enough to ignite a new dawn.',
     tags: ['Sci-Fi', 'Narrative Driven', 'Colony Sim'],
-    backgroundImagePrompt: 'A lone figure stands on a high balcony overlooking a futuristic, cyberpunk colony dome at night. The mood is contemplative and serious.',
-    backgroundImageBase64: '',
+    showcaseImages: [
+        {
+            id: 'img_initial_1',
+            prompt: 'A lone figure stands on a high balcony overlooking a futuristic, cyberpunk colony dome at night. The mood is contemplative and serious.',
+            base64: ''
+        }
+    ],
     news: [
       {
         id: 'news_1',
@@ -317,6 +322,26 @@ const initialProject: PhoenixProject = {
       }
     ],
     backgroundImagePrompt: 'A sleek, futuristic, dark sci-fi computer interface with glowing abstract geometric patterns. Minimalist and clean.',
+    gameListLayout: 'grid',
+    gameCardStyle: {
+      showColonyName: true,
+      imageAspectRatio: '16/9',
+      hoverEffect: 'lift',
+      imageDisplay: 'single',
+      backgroundColor: '#1f293780',
+      borderColor: '#4b5563',
+      titleColor: '#ffffff',
+      textColor: '#9ca3af',
+      buttonColor: '#22d3ee',
+      buttonTextColor: '#111827',
+    },
+    gameListStyle: {
+        backgroundType: 'transparent',
+        backgroundColor1: '#1f293780',
+        backgroundColor2: '#11182740',
+        padding: 0,
+        borderRadius: 0,
+    }
   },
   games: [initialGameData]
 };

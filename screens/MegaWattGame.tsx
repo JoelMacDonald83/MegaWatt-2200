@@ -1,6 +1,7 @@
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem } from '../types';
+// FIX: Import 'useCallback' from 'react' to fix a 'Cannot find name' error.
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { PlayIcon } from '../components/icons/PlayIcon';
@@ -8,6 +9,8 @@ import { NewspaperIcon } from '../components/icons/NewspaperIcon';
 import { UserCircleIcon } from '../components/icons/UserCircleIcon';
 import { ArrowLeftIcon } from '../components/icons/ArrowLeftIcon';
 import { HomeIcon } from '../components/icons/HomeIcon';
+import { ChevronLeftIcon } from '../components/icons/ChevronLeftIcon';
+import { ChevronRightIcon } from '../components/icons/ChevronRightIcon';
 
 // --- SHARED UTILS ---
 
@@ -38,7 +41,7 @@ const parseMarkdown = (text: string): string => {
 };
 
 const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
-    const publishedNews = [...news].filter(n => n.status === 'published').reverse();
+    const publishedNews = [...(news || [])].filter(n => n.status === 'published').reverse();
 
     return (
         <div className="space-y-6 max-w-3xl">
@@ -290,6 +293,7 @@ const GamePlayer: React.FC<{gameData: GameData, onChoiceMade: (outcomes: ChoiceO
 const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: () => void}> = ({ gameData, onPlay, onBack }) => {
     const [activeMenu, setActiveMenu] = useState<'main' | 'news' | 'credits'>('main');
     const { menuSettings } = gameData;
+    const bgImage = menuSettings.showcaseImages?.[0]?.base64;
 
     const MenuButton: React.FC<{ section: any; icon: React.ReactNode; label: string; }> = ({ section, icon, label }) => (
         <button onClick={() => setActiveMenu(section)} className={`flex items-center gap-3 w-full p-3 text-left rounded-md transition-colors text-[length:var(--font-size-sm)] ${activeMenu === section ? 'bg-[var(--text-accent)]/20 text-[var(--text-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}>
@@ -300,7 +304,7 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
 
     return (
         <div className="relative min-h-screen bg-black text-white flex">
-            {menuSettings.backgroundImageBase64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${menuSettings.backgroundImageBase64})`, animationDuration: '45s' }} />}
+            {bgImage && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage})`, animationDuration: '45s' }} />}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             
             <aside className="relative z-10 w-64 bg-[var(--bg-panel)]/30 p-4 flex flex-col space-y-2 border-r border-[var(--border-primary)]/50">
@@ -347,9 +351,179 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
 };
 
 
-// --- COMPANY LAUNCHER COMPONENT ---
+// --- COMPANY LAUNCHER COMPONENTS ---
+
+const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const timeoutRef = useRef<number | null>(null);
+
+    const resetTimeout = useCallback(() => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+    }, []);
+
+    useEffect(() => {
+        resetTimeout();
+        timeoutRef.current = window.setTimeout(() => {
+            setCurrentIndex((prevIndex) => (prevIndex === images.length - 1 ? 0 : prevIndex + 1));
+        }, 5000);
+        return () => resetTimeout();
+    }, [currentIndex, images.length, resetTimeout]);
+
+    const goToPrevious = () => {
+        const isFirstSlide = currentIndex === 0;
+        const newIndex = isFirstSlide ? images.length - 1 : currentIndex - 1;
+        setCurrentIndex(newIndex);
+    };
+
+    const goToNext = () => {
+        const isLastSlide = currentIndex === images.length - 1;
+        const newIndex = isLastSlide ? 0 : currentIndex + 1;
+        setCurrentIndex(newIndex);
+    };
+
+    if (!images || images.length === 0) {
+        return <div className="w-full h-full bg-black/50 flex items-center justify-center text-gray-400">No Images</div>;
+    }
+
+    return (
+        <div className="w-full h-full relative group/slider">
+            <div className="w-full h-full overflow-hidden">
+                <div className="whitespace-nowrap transition-transform duration-500 ease-in-out" style={{ transform: `translateX(${-currentIndex * 100}%)` }}>
+                    {images.map((image, index) => (
+                        <div key={image.id} className="inline-block w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${image.base64})` }} />
+                    ))}
+                </div>
+            </div>
+            {images.length > 1 && (
+                <>
+                    <button onClick={goToPrevious} className="absolute top-1/2 left-2 -translate-y-1/2 bg-black/40 hover:bg-black/70 p-1 rounded-full opacity-0 group-hover/slider:opacity-100 transition-opacity">
+                        <ChevronLeftIcon className="w-5 h-5" />
+                    </button>
+                    <button onClick={goToNext} className="absolute top-1/2 right-2 -translate-y-1/2 bg-black/40 hover:bg-black/70 p-1 rounded-full opacity-0 group-hover/slider:opacity-100 transition-opacity">
+                        <ChevronRightIcon className="w-5 h-5" />
+                    </button>
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                        {images.map((_, index) => (
+                            <div key={index} onClick={() => setCurrentIndex(index)} className={`w-2 h-2 rounded-full cursor-pointer transition-colors ${currentIndex === index ? 'bg-white' : 'bg-white/40 hover:bg-white/70'}`} />
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+const GamePreviewCard: React.FC<{
+    game: GameData;
+    layout: 'grid' | 'list';
+    cardStyle: GameCardStyle;
+    onSelectGame: (gameId: string) => void;
+}> = ({ game, layout, cardStyle, onSelectGame }) => {
+
+    const hoverClasses = {
+        lift: 'group transform hover:-translate-y-1 transition-transform duration-300',
+        glow: 'transition-shadow duration-300 hover:shadow-lg hover:shadow-cyan-500/20',
+        none: '',
+    }[cardStyle.hoverEffect];
+
+    const aspectRatioClass = {
+        '16/9': 'aspect-[16/9]',
+        '4/3': 'aspect-[4/3]',
+        '1/1': 'aspect-square',
+        'auto': 'h-48'
+    }[cardStyle.imageAspectRatio];
+    
+    const cardDynamicStyle: React.CSSProperties = {
+        backgroundColor: cardStyle.backgroundColor,
+        borderColor: cardStyle.borderColor,
+        borderWidth: cardStyle.borderColor ? '1px' : '0',
+        borderStyle: 'solid',
+    };
+
+    const imageContent = cardStyle.imageDisplay === 'slider' && game.menuSettings.showcaseImages?.length > 0 ? (
+        <ImageSlider images={game.menuSettings.showcaseImages} />
+    ) : (
+        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: game.menuSettings.showcaseImages?.[0]?.base64 ? `url(${game.menuSettings.showcaseImages[0].base64})` : 'none', backgroundColor: '#111' }} />
+    );
+
+    if (layout === 'grid') {
+        return (
+            <div className={`rounded-lg overflow-hidden flex flex-col ${hoverClasses}`} style={cardDynamicStyle}>
+                <div className={`${aspectRatioClass}`}>
+                    {imageContent}
+                </div>
+                <div className="p-4 flex flex-col flex-grow">
+                    <h2 className="text-xl font-bold" style={{ color: cardStyle.titleColor }}>{game.gameTitle}</h2>
+                    {(cardStyle.showColonyName) && <p className="text-sm mt-1" style={{ color: cardStyle.textColor }}>{game.colonyName}</p>}
+                    <button onClick={() => onSelectGame(game.id)} className="w-full mt-auto font-bold py-2 px-4 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
+                        Launch
+                    </button>
+                </div>
+            </div>
+        );
+    }
+    
+    // List Layout
+    return (
+         <div className={`rounded-lg overflow-hidden flex items-center ${hoverClasses}`} style={cardDynamicStyle}>
+            <div className={`w-1/3 flex-shrink-0 ${aspectRatioClass}`}>
+                {imageContent}
+            </div>
+            <div className="p-4 flex flex-col flex-grow">
+                <h2 className="text-xl font-bold" style={{ color: cardStyle.titleColor }}>{game.gameTitle}</h2>
+                {(cardStyle.showColonyName) && <p className="text-sm mt-1 mb-3" style={{ color: cardStyle.textColor }}>{game.colonyName}</p>}
+            </div>
+             <div className="p-4 flex-shrink-0">
+                <button onClick={() => onSelectGame(game.id)} className="font-bold py-2 px-8 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
+                    Launch
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameData[], onSelectGame: (gameId: string) => void}> = ({ settings, games, onSelectGame }) => {
+    const layout = settings.gameListLayout || 'grid';
+    const cardStyle = useMemo((): GameCardStyle => ({
+      showColonyName: true,
+      imageAspectRatio: '16/9',
+      imageDisplay: 'single',
+      hoverEffect: 'lift',
+      backgroundColor: '#1f293780', // bg-gray-800/50
+      borderColor: '#4b5563', // border-gray-600
+      titleColor: '#ffffff', // text-white
+      textColor: '#9ca3af', // text-gray-400
+      buttonColor: '#22d3ee', // bg-cyan-400
+      buttonTextColor: '#111827', // text-gray-900
+      ...(settings.gameCardStyle || {}),
+    }), [settings.gameCardStyle]);
+    
+    const listStyle = useMemo((): GameListStyle => ({
+      backgroundType: 'transparent',
+      backgroundColor1: '#00000000',
+      backgroundColor2: '#00000000',
+      padding: 0,
+      borderRadius: 0,
+      ...(settings.gameListStyle || {}),
+    }), [settings.gameListStyle]);
+
+    const gridContainerClasses = layout === 'grid' 
+        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+        : "flex flex-col gap-4";
+        
+    const containerDynamicStyle: React.CSSProperties = {
+        padding: `${listStyle.padding}px`,
+        borderRadius: `${listStyle.borderRadius}px`,
+    };
+
+    if (listStyle.backgroundType === 'solid') {
+        containerDynamicStyle.backgroundColor = listStyle.backgroundColor1;
+    } else if (listStyle.backgroundType === 'gradient' && listStyle.backgroundColor1 && listStyle.backgroundColor2) {
+        containerDynamicStyle.backgroundImage = `linear-gradient(to bottom, ${listStyle.backgroundColor1}, ${listStyle.backgroundColor2})`;
+    }
+
     return (
         <div className="relative min-h-screen bg-black text-white flex flex-col">
             {settings.backgroundImageBase64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${settings.backgroundImageBase64})` }} />}
@@ -360,19 +534,18 @@ const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameD
             </header>
             
             <div className="relative z-10 flex-1 flex">
-                <main className="flex-1 p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 overflow-y-auto">
-                    {games.map(game => (
-                        <div key={game.id} className="bg-[var(--bg-panel)]/50 border border-[var(--border-secondary)] rounded-lg overflow-hidden flex flex-col group transform hover:-translate-y-1 transition-transform duration-300">
-                            <div className="h-48 bg-cover bg-center" style={{backgroundImage: game.menuSettings.backgroundImageBase64 ? `url(${game.menuSettings.backgroundImageBase64})` : 'none', backgroundColor: '#111'}}></div>
-                            <div className="p-4 flex flex-col flex-grow">
-                                <h2 className="text-xl font-bold text-white">{game.gameTitle}</h2>
-                                <p className="text-sm text-[var(--text-secondary)] mt-1">{game.colonyName}</p>
-                                <button onClick={() => onSelectGame(game.id)} className="w-full mt-auto bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition-all duration-300 transform group-hover:scale-105">
-                                    Launch
-                                </button>
-                            </div>
-                        </div>
-                    ))}
+                <main className="flex-1 p-8 overflow-y-auto">
+                    <div className={gridContainerClasses} style={containerDynamicStyle}>
+                        {games.map(game => (
+                           <GamePreviewCard 
+                             key={game.id}
+                             game={game}
+                             layout={layout}
+                             cardStyle={cardStyle}
+                             onSelectGame={onSelectGame}
+                           />
+                        ))}
+                    </div>
                 </main>
 
                 <aside className="w-96 bg-[var(--bg-panel)]/30 p-6 border-l border-[var(--border-primary)]/50 overflow-y-auto flex-shrink-0">
@@ -392,9 +565,10 @@ type LauncherFlowView = 'company_launcher' | 'game_launcher' | 'gameplay';
 interface LauncherFlowProps {
   projectData: PhoenixProject;
   onChoiceMade: (gameId: string, outcomes: ChoiceOutcome[]) => void;
+  isPreview?: boolean;
 }
 
-export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoiceMade }) => {
+export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoiceMade, isPreview = false }) => {
     const [currentView, setCurrentView] = useState<LauncherFlowView>('company_launcher');
     const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
 
@@ -404,6 +578,7 @@ export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoic
     }, [selectedGameId, projectData.games]);
 
     const handleSelectGame = (gameId: string) => {
+        if (isPreview) return;
         setSelectedGameId(gameId);
         setCurrentView('game_launcher');
     };
