@@ -1,24 +1,27 @@
 
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { StoryCard, PlayerChoice } from '../../types';
+// Fix: Replaced StoryCard with PlayerChoice as the StoryCard type is obsolete.
+import type { PlayerChoice } from '../../types';
 import { StyleSelect, StyleNumberInput, StyleRadio } from '../../components/editor/StyleComponents';
 import { debugService } from '../../services/debugService';
 
 interface StoryCardEditorProps {
-    initialCard: StoryCard;
-    onSave: (c: StoryCard) => void;
+    initialCard: PlayerChoice;
+    onSave: (c: PlayerChoice) => void;
     onCancel: () => void;
     onGenerateImage: (prompt: string, onUpdate: (base64: string) => void) => void;
     isGenerating: boolean;
     isNew: boolean;
-    choices?: PlayerChoice[];
+    choices: PlayerChoice[];
+    allCards: PlayerChoice[];
     isChoiceCard?: boolean;
 }
 
 
-export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, onSave, onCancel, onGenerateImage, isGenerating, isNew, choices, isChoiceCard = false }) => {
-    const [localCard, setLocalCard] = useState<StoryCard>(() => JSON.parse(JSON.stringify(initialCard)));
+export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, onSave, onCancel, onGenerateImage, isGenerating, isNew, choices, allCards, isChoiceCard = false }) => {
+    const [localCard, setLocalCard] = useState<PlayerChoice>(() => JSON.parse(JSON.stringify(initialCard)));
     const bgInputRef = useRef<HTMLInputElement>(null);
     const fgInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,7 +30,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
         setLocalCard(JSON.parse(JSON.stringify(initialCard)));
     }, [initialCard, isNew, isChoiceCard]);
 
-    const updateField = (field: keyof StoryCard, value: any) => {
+    const updateField = (field: keyof PlayerChoice, value: any) => {
         setLocalCard(prev => {
             const newState = { ...prev, [field]: value };
             debugService.log('StoryCardEditor: Updating field', { field, value, oldState: prev, newState });
@@ -39,8 +42,8 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
         if (localCard.imagePrompt) {
             debugService.log('StoryCardEditor: AI image generation triggered', { prompt: localCard.imagePrompt });
             onGenerateImage(localCard.imagePrompt, (base64) => {
-                debugService.log('StoryCardEditor: AI image generation completed and received base64', { base64Length: base64.length });
-                updateField('imageBase64', base64);
+                debugService.log('StoryCardEditor: AI image generation completed and received base64');
+                updateField('imageBase64', `data:image/jpeg;base64,${base64}`);
             });
         }
     };
@@ -62,7 +65,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
         }
     }
 
-    const updateStyle = (key: keyof NonNullable<StoryCard['styles']>, value: any) => {
+    const updateStyle = (key: keyof NonNullable<PlayerChoice['styles']>, value: any) => {
         setLocalCard(prev => {
             const newState = {
                 ...prev,
@@ -76,7 +79,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
         });
     };
 
-    const updateFgStyle = (key: keyof NonNullable<StoryCard['styles']>['foregroundImageStyles'], value: any) => {
+    const updateFgStyle = (key: keyof NonNullable<PlayerChoice['styles']>['foregroundImageStyles'], value: any) => {
         setLocalCard(prev => {
             const newState = {
                 ...prev,
@@ -122,8 +125,6 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
             textAnimation: s.textAnimation || 'fade-in',
             textAnimationDuration: s.textAnimationDuration || 1,
             textAnimationDelay: s.textAnimationDelay || 0.5,
-            borderWidth: s.borderWidth || 'none',
-            borderColor: s.borderColor || 'cyan-500',
             fg: {
                 position: fgs.position || 'center',
                 size: fgs.size || 'medium',
@@ -202,13 +203,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                         <StyleSelect label="Overlay Strength" value={styles.overlayStrength} onChange={e => updateStyle('overlayStrength', e.target.value)}><option value="none">None</option><option value="light">Light</option><option value="medium">Medium</option><option value="heavy">Heavy</option></StyleSelect>
                         <StyleSelect label="Background Effect" value={styles.backgroundEffect} onChange={e => updateStyle('backgroundEffect', e.target.value)}><option value="none">None</option><option value="blur">Blur</option><option value="darken">Darken</option></StyleSelect>
                         
-                         {/* Card Styles */}
-                        {isChoiceCard && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <StyleSelect label="Border Width" value={styles.borderWidth} onChange={e => updateStyle('borderWidth', e.target.value)}><option value="none">None</option><option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option></StyleSelect>
-                             <input type="text" value={styles.borderColor} onChange={e => updateStyle('borderColor', e.target.value)} className="self-end bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm" placeholder="e.g. cyan-500"/>
-                          </div>
-                        )}
+                        {/* Fix: Removed border styling options as they are not part of the PlayerChoice styles object. */}
                         
                         {/* Animations */}
                         <div className="grid grid-cols-[2fr_1fr] gap-2"><StyleSelect wrapperClassName="col-span-2" label="Background Animation" value={styles.backgroundAnimation} onChange={e => updateStyle('backgroundAnimation', e.target.value)}><option value="kenburns-normal">Ken Burns Normal</option><option value="kenburns-subtle">Ken Burns Subtle</option><option value="pan-left">Pan Left</option><option value="pan-right">Pan Right</option><option value="zoom-out">Zoom Out</option><option value="none">None</option></StyleSelect><StyleNumberInput wrapperClassName="col-span-2" label="Duration (s)" value={styles.backgroundAnimationDuration} onChange={e => updateStyle('backgroundAnimationDuration', e.target.valueAsNumber)} /></div>
@@ -238,15 +233,16 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                     )}
                  </fieldset>
                 
+                 {/* Fix: Updated navigation to use nextChoiceId and remove obsolete choiceId logic */}
                  {choices && !isChoiceCard && (
                     <fieldset className="space-y-4 pt-4 border-t border-gray-700">
-                        <legend className="text-lg font-semibold text-gray-300 px-1">Player Choice</legend>
-                        <StyleSelect label="Link to Choice" value={localCard.choiceId} onChange={e => updateField('choiceId', e.target.value || undefined)}>
-                            <option value="">-- No Choice --</option>
-                            {choices.map(choice => (
-                                <option key={choice.id} value={choice.id}>{choice.name}</option>
-                            ))}
-                        </StyleSelect>
+                        <legend className="text-lg font-semibold text-gray-300 px-1">Navigation</legend>
+                            <StyleSelect label="Next Scene (if no choice)" value={localCard.nextChoiceId || ''} onChange={e => updateField('nextChoiceId', e.target.value || undefined)}>
+                                <option value="">-- End of Path --</option>
+                                {allCards.filter(c => c.id !== localCard.id).map(card => (
+                                    <option key={card.id} value={card.id}>{card.description.substring(0,40)}...</option>
+                                ))}
+                            </StyleSelect>
                     </fieldset>
                  )}
 

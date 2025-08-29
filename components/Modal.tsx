@@ -1,4 +1,5 @@
 
+
 import React, { useEffect } from 'react';
 
 interface ModalProps {
@@ -26,21 +27,21 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-backdrop)] backdrop-blur-sm"
       aria-labelledby="modal-title"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-4xl bg-gray-800 rounded-lg shadow-xl border border-gray-700 max-h-[90vh] flex flex-col"
+        className="relative w-full max-w-4xl bg-[var(--bg-panel)] rounded-lg shadow-xl border border-[var(--border-primary)] max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 id="modal-title" className="text-xl font-bold text-cyan-300">{title}</h2>
+        <header className="flex items-center justify-between p-4 border-b border-[var(--border-primary)]">
+          <h2 id="modal-title" className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{title}</h2>
           <button 
             onClick={onClose} 
-            className="text-gray-400 hover:text-white"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             aria-label="Close modal"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -52,7 +53,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
           {children}
         </main>
         {footer && (
-          <footer className="flex justify-end p-4 border-t border-gray-700 bg-gray-800/50 rounded-b-lg">
+          <footer className="flex justify-end p-4 border-t border-[var(--border-primary)] bg-[var(--bg-panel)]/50 rounded-b-lg">
             {footer}
           </footer>
         )}

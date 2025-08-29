@@ -1,5 +1,5 @@
 
-import type { Condition, GameData, Entity, Template } from '../types';
+import type { Condition, GameData, Entity, Template, ChoiceOutcome } from '../types';
 import { debugService } from './debugService';
 
 function getEntityAttributeValue(entity: Entity | undefined, attributeId: string): string | number | null {
@@ -58,6 +58,7 @@ function checkEntityExistsCondition(condition: Extract<Condition, { type: 'entit
     return result;
 }
 
+// Fix: Replaced `includedStuff` with `includedComponentIds` and added inheritance logic.
 function checkHasStuffCondition(condition: Extract<Condition, { type: 'has_stuff' }>, gameData: GameData): boolean {
     const entity = gameData.entities.find(e => e.id === condition.targetEntityId);
     if (!entity) {
@@ -65,15 +66,20 @@ function checkHasStuffCondition(condition: Extract<Condition, { type: 'has_stuff
         return false;
     }
     
-    const template = gameData.templates.find(t => t.id === entity.templateId);
+    let template = gameData.templates.find(t => t.id === entity.templateId);
     if (!template) {
         debugService.log('ConditionEvaluator: checkHasStuffCondition failed (template not found)', { templateId: entity.templateId });
         return false;
     }
     
-    // Note: This logic needs to check inheritance chain if that's the desired behavior.
-    // For now, it only checks the direct template.
-    const hasItem = (template.includedStuff || []).some(is => is.itemIds.includes(condition.stuffItemId));
+    // Check components on the template and its parents
+    const allComponentIds = new Set<string>();
+    let current: Template | undefined = template;
+    while(current) {
+        (current.includedComponentIds || []).forEach(id => allComponentIds.add(id));
+        current = gameData.templates.find(t => t.id === current?.parentId);
+    }
+    const hasItem = allComponentIds.has(condition.stuffItemId);
 
     const result = hasItem === condition.hasIt;
     debugService.log('ConditionEvaluator: checkHasStuffCondition', {
@@ -107,15 +113,19 @@ export function evaluateCondition(condition: Condition, gameData: GameData): boo
     return result;
 }
 
+// Fix: Replaced logic that searched `gameData.stuff` with logic to search component templates.
 function findAttributeDefinition(attributeId: string, gameData: GameData): { name: string; type: string } | null {
+    // First, check for a direct attribute ID match on any template.
     for (const template of gameData.templates) {
         const attr = template.attributes.find(a => a.id === attributeId);
         if (attr) return attr;
     }
-    for (const stuffSet of gameData.stuff) {
-        for (const item of stuffSet.items) {
-             const attr = item.attributes.find(a => a.id === attributeId.split('_').pop());
-             if (attr && attributeId.startsWith(item.id)) return attr;
+    // If not found, check if it's a composite component attribute ID (e.g., 'componentId_attributeId')
+    for (const component of gameData.templates.filter(t => t.isComponent)) {
+        if (attributeId.startsWith(component.id + '_')) {
+            const attrIdPart = attributeId.substring(component.id.length + 1);
+            const attr = component.attributes.find(a => a.id === attrIdPart);
+            if (attr) return attr;
         }
     }
     return null;
@@ -136,7 +146,8 @@ export function conditionToString(condition: Condition, gameData: GameData, isFi
                 return `An entity from template '${templateName}' ${condition.exists ? 'exists' : 'does not exist'}`;
             case 'has_stuff':
                  const targetName = gameData.entities.find(e => e.id === condition.targetEntityId)?.name || 'Unknown Entity';
-                 const allItems = gameData.stuff.flatMap(s => s.items);
+                 // Fix: Replaced `gameData.stuff` with a filter on `gameData.templates` to find components.
+                 const allItems = gameData.templates.filter(t => t.isComponent);
                  const itemName = allItems.find(i => i.id === condition.stuffItemId)?.name || 'Unknown Item';
                  return `${targetName} ${condition.hasIt ? 'has' : 'does not have'} '${itemName}'`;
             default:
@@ -145,5 +156,52 @@ export function conditionToString(condition: Condition, gameData: GameData, isFi
     } catch (e) {
         debugService.log("Error in conditionToString", { error: e, condition });
         return "Error rendering condition";
+    }
+}
+
+export function outcomeToString(outcome: ChoiceOutcome, gameData: GameData): string {
+    try {
+        if (outcome.type === 'create_entity') {
+            const template = gameData.templates.find(t => t.id === outcome.templateId);
+            return `Create: ${outcome.name} (from ${template?.name || 'Unknown'})`;
+        }
+        if (outcome.type === 'update_entity') {
+            let entityName = 'Unknown';
+            if (outcome.targetEntityId === '<chosen_entity>') {
+                entityName = '<Chosen Entity>';
+            } else {
+                entityName = gameData.entities.find(e => e.id === outcome.targetEntityId)?.name || 'Unknown';
+            }
+
+            // A simplified way to find attribute name for display
+            let attrName = 'Unknown Attr';
+            for (const t of gameData.templates) {
+                 const attr = t.attributes.find(a => a.id === outcome.attributeId);
+                 if (attr) {
+                    attrName = attr.name;
+                    break;
+                 }
+                 // Check component attributes
+                 if (t.isComponent && outcome.attributeId.startsWith(t.id + '_')) {
+                     const attrIdPart = outcome.attributeId.substring(t.id.length + 1);
+                     const compAttr = t.attributes.find(a => a.id === attrIdPart);
+                     if (compAttr) {
+                         attrName = compAttr.name;
+                         break;
+                     }
+                 }
+            }
+
+            let valueStr = String(outcome.value);
+            if (valueStr === '<chosen_entity_id>') {
+                valueStr = '<Chosen Entity ID>';
+            }
+
+            return `Update ${entityName}'s ${attrName} to "${valueStr}"`;
+        }
+        return 'Invalid Outcome';
+    } catch (e) {
+        debugService.log("Error in outcomeToString", { error: e, outcome });
+        return 'Error rendering outcome';
     }
 }

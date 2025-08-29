@@ -1,4 +1,4 @@
-import type { Template, Entity, StuffSet, PlayerChoice, StoryCard } from '../types';
+import type { Template, Entity, PlayerChoice } from '../types';
 
 // A helper to check for common 'id' and 'name' properties
 // Fix: Changed return type from a type predicate to boolean. The type predicate was too restrictive,
@@ -12,7 +12,9 @@ export const isTemplate = (obj: any): obj is Template => {
     hasBaseFields(obj) &&
     typeof obj.description === 'string' &&
     Array.isArray(obj.tags) &&
-    Array.isArray(obj.attributes)
+    Array.isArray(obj.attributes) &&
+    typeof obj.isComponent === 'boolean' &&
+    (!obj.includedComponentIds || Array.isArray(obj.includedComponentIds))
   );
 };
 
@@ -24,14 +26,6 @@ export const isEntity = (obj: any): obj is Entity => {
   );
 };
 
-export const isStuffSet = (obj: any): obj is StuffSet => {
-  return (
-    hasBaseFields(obj) &&
-    typeof obj.description === 'string' &&
-    Array.isArray(obj.items)
-  );
-};
-
 export const isPlayerChoice = (obj: any): obj is PlayerChoice => {
   return (
     hasBaseFields(obj) &&
@@ -40,19 +34,8 @@ export const isPlayerChoice = (obj: any): obj is PlayerChoice => {
   );
 };
 
-export const isStoryCard = (obj: any): obj is StoryCard => {
-  return (
-    typeof obj === 'object' && obj !== null &&
-    typeof obj.id === 'string' &&
-    typeof obj.description === 'string' &&
-    typeof obj.imagePrompt === 'string'
-  );
-};
-
 export const VALIDATORS = {
     templates: isTemplate,
     entities: isEntity,
-    stuff: isStuffSet,
     choices: isPlayerChoice,
-    story: isStoryCard,
 };

@@ -1,9 +1,10 @@
 
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Entity, GameData, AttributeDefinition, Template, IncludedStuff } from '../../types';
+import type { Entity, GameData, AttributeDefinition, Template } from '../../types';
 import { debugService } from '../../services/debugService';
 import { StyleSelect } from '../../components/editor/StyleComponents';
+import { HelpTooltip } from '../../components/HelpTooltip';
 
 interface EntityEditorProps {
     initialEntity: Entity;
@@ -30,7 +31,7 @@ const AttributeInput: React.FC<{
                     value={(value as string) || ''} 
                     onChange={e => onChange(e.target.value)} 
                     rows={6} 
-                    className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"
                 />
             );
         case 'number':
@@ -39,13 +40,13 @@ const AttributeInput: React.FC<{
                     type="number" 
                     value={(value as number) || ''} 
                     onChange={e => onChange(e.target.valueAsNumber || null)} 
-                    className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"
                 />
             );
         case 'entity_reference':
             if (!attribute.referencedTemplateId) {
                 return (
-                    <div className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-gray-500 text-sm italic">
+                    <div className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[var(--text-tertiary)] text-[length:var(--font-size-sm)] italic">
                         The referenced template is not set for this attribute.
                     </div>
                 );
@@ -55,7 +56,7 @@ const AttributeInput: React.FC<{
                 <select 
                     value={(value as string) || ''} 
                     onChange={e => onChange(e.target.value || null)} 
-                    className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"
                 >
                     <option value="">-- Unassigned --</option>
                     {referencedEntities.length > 0 
@@ -71,15 +72,15 @@ const AttributeInput: React.FC<{
                     type="text" 
                     value={(value as string) || ''} 
                     onChange={e => onChange(e.target.value)} 
-                    className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"
                 />
             );
     }
 };
 
 interface ResolvedProperties {
-    attributes: { definition: AttributeDefinition; sourceTemplate: Template }[];
-    stuff: { included: IncludedStuff; sourceTemplate: Template }[];
+    baseAttributes: { definition: AttributeDefinition; sourceTemplate: Template }[];
+    components: { component: Template; attributes: AttributeDefinition[] }[];
 }
 
 
@@ -87,7 +88,6 @@ const useResolvedTemplateProperties = (templateId: string, gameData: GameData): 
     return useMemo(() => {
         debugService.log('EntityEditor: Recalculating resolved properties for template', { templateId });
         const { templates } = gameData;
-        const resolved: ResolvedProperties = { attributes: [], stuff: [] };
         
         let currentTemplate = templates.find(t => t.id === templateId);
         if (!currentTemplate) {
@@ -101,23 +101,29 @@ const useResolvedTemplateProperties = (templateId: string, gameData: GameData): 
             currentTemplate = templates.find(t => t.id === currentTemplate?.parentId);
         }
 
+        const baseAttributes: ResolvedProperties['baseAttributes'] = [];
+        const componentIds = new Set<string>();
         const seenAttributeIds = new Set<string>();
-        const seenStuffSetIds = new Set<string>();
 
         for (const template of hierarchy) {
             template.attributes.forEach(attr => {
                 if (!seenAttributeIds.has(attr.id)) {
-                    resolved.attributes.push({ definition: attr, sourceTemplate: template });
+                    baseAttributes.push({ definition: attr, sourceTemplate: template });
                     seenAttributeIds.add(attr.id);
                 }
             });
-            (template.includedStuff || []).forEach(is => {
-                 if (!seenStuffSetIds.has(is.setId)) {
-                    resolved.stuff.push({ included: is, sourceTemplate: template });
-                    seenStuffSetIds.add(is.setId);
-                 }
-            });
+            (template.includedComponentIds || []).forEach(id => componentIds.add(id));
         }
+
+        const components: ResolvedProperties['components'] = [];
+        componentIds.forEach(id => {
+            const componentTemplate = templates.find(t => t.id === id);
+            if (componentTemplate) {
+                components.push({ component: componentTemplate, attributes: componentTemplate.attributes });
+            }
+        });
+
+        const resolved = { baseAttributes, components };
         debugService.log('EntityEditor: Finished recalculating resolved properties', { resolved, hierarchy: hierarchy.map(t => t.name) });
         return resolved;
     }, [templateId, gameData]);
@@ -144,8 +150,8 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
             borderColor: s.borderColor || 'cyan-500',
             borderWidth: s.borderWidth || 'md',
             shadow: s.shadow || 'lg',
-            titleColor: s.titleColor || 'text-cyan-300',
-            backgroundColor: s.backgroundColor || 'bg-gray-800/50',
+            titleColor: s.titleColor || 'text-[var(--text-accent)]',
+            backgroundColor: s.backgroundColor || 'bg-[var(--bg-panel)]/50',
             overlay: s.backgroundOverlayStrength || (hasBgImage ? 'medium' : 'none'),
         };
     }, [localEntity.styles, localEntity.imageBase64]);
@@ -159,19 +165,10 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
     }, [styles]);
 
     if (!template || !resolvedProperties) {
-        return <div className="p-6 text-red-400">Error: Cannot find template with ID {localEntity.templateId}</div>;
+        return <div className="p-6 text-[var(--text-danger)]">Error: Cannot find template with ID {localEntity.templateId}</div>;
     }
 
-    const { attributes: allAttributes, stuff: allStuff } = resolvedProperties;
-    
-    // Group attributes by their source template for rendering
-    const attributesByTemplate = allAttributes.reduce((acc, { definition, sourceTemplate }) => {
-        if (!acc[sourceTemplate.id]) {
-            acc[sourceTemplate.id] = { templateName: sourceTemplate.name, attributes: [] };
-        }
-        acc[sourceTemplate.id].attributes.push(definition);
-        return acc;
-    }, {} as Record<string, { templateName: string, attributes: AttributeDefinition[] }>);
+    const { baseAttributes, components } = resolvedProperties;
 
     const updateField = (field: keyof Entity, value: any) => {
         setLocalEntity(prev => ({...prev, [field]: value}));
@@ -236,109 +233,124 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
     }
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-800 min-h-0">
-             <header className="p-4 border-b border-gray-700">
-                <h2 className="text-xl font-bold text-cyan-300">{isNew ? 'Creating New Entity' : `Editing: ${initialEntity.name}`}</h2>
+        <div className="flex-1 flex flex-col bg-[var(--bg-panel)] min-h-0">
+             <header className="p-4 border-b border-[var(--border-primary)]">
+                <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{isNew ? 'Creating New Entity' : `Editing: ${initialEntity.name}`}</h2>
             </header>
             <main className="flex-grow p-6 space-y-6 overflow-y-auto">
                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
-                    <input type="text" value={localEntity.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500"/>
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Name</label>
+                        <HelpTooltip title="Entity Name" content="The specific name for this instance of the blueprint. For example, if the blueprint is 'Character', the name might be 'Jax Corrigan'." />
+                    </div>
+                    <input type="text" value={localEntity.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
                 </div>
                 
-                 {Object.values(attributesByTemplate).map(({ templateName, attributes }) => (
-                     <fieldset key={templateName} className="space-y-4 pt-4 border-t border-gray-700">
-                         <legend className="text-lg font-semibold text-gray-300 -mb-2 px-1">{templateName} Attributes</legend>
-                         {attributes.map(attr => (
-                            <div key={attr.id}>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">{attr.name}</label>
-                                <AttributeInput 
-                                    attribute={attr} 
-                                    value={localEntity.attributeValues[attr.id] ?? null}
-                                    onChange={(value) => handleAttributeValueChange(attr.id, value)}
-                                    gameData={gameData}
-                                />
-                                {attr.type === 'textarea' && (
-                                    <button onClick={() => handleGenerateContentClick(attr.id)} disabled={!!isGenerating} className="mt-2 w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">
-                                        {isGenerating === attr.id ? 'Generating...' : 'Generate with AI'}
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </fieldset>
-                 ))}
+                 <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <div className="flex items-center gap-2">
+                        <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Base Attributes</legend>
+                        <HelpTooltip title="Base Attributes" content="These attributes come directly from the entity's own blueprint, or are inherited from its parent blueprint. Their values are unique to this specific entity." />
+                    </div>
+                    {baseAttributes.map(({ definition: attr, sourceTemplate }) => (
+                        <div key={attr.id}>
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">{attr.name} <span className="text-[length:var(--font-size-xs)] text-[var(--text-accent)]">(from {sourceTemplate.name})</span></label>
+                            <AttributeInput 
+                                attribute={attr} 
+                                value={localEntity.attributeValues[attr.id] ?? null}
+                                onChange={(value) => handleAttributeValueChange(attr.id, value)}
+                                gameData={gameData}
+                            />
+                            {attr.type === 'textarea' && (
+                                <button onClick={() => handleGenerateContentClick(attr.id)} disabled={!!isGenerating} className="mt-2 w-full bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition duration-300">
+                                    {isGenerating === attr.id ? 'Generating...' : 'Generate with AI'}
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </fieldset>
                 
-                {/* Stuff Attributes */}
-                {allStuff.length > 0 && (
-                     <fieldset className="space-y-4 pt-4 border-t border-gray-700">
-                        <legend className="text-lg font-semibold text-teal-300 px-1">Stuff & Skills</legend>
-                        {allStuff.map(({ included, sourceTemplate }) => {
-                            const stuffSet = gameData.stuff.find(s => s.id === included.setId);
-                            if (!stuffSet) return null;
-                            const items = stuffSet.items.filter(i => included.itemIds.includes(i.id));
-
+                {/* Component Attributes */}
+                {components.map(({ component, attributes }) => (
+                     <fieldset key={component.id} className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                        <div className="flex items-center gap-2">
+                            <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-teal)] px-1">Component: {component.name}</legend>
+                             <HelpTooltip title={`Component: ${component.name}`} content={`These attributes are added to this entity because its blueprint includes the '${component.name}' component. This allows for mixing and matching capabilities across different types of entities.`} />
+                        </div>
+                        {attributes.map(attr => {
+                            const compositeId = `${component.id}_${attr.id}`;
                             return (
-                                <div key={stuffSet.id} className="p-3 bg-gray-900/50 rounded-md border border-gray-700">
-                                    <h4 className="font-bold text-gray-300 mb-2">{stuffSet.name} <span className="text-xs text-cyan-400">(from {sourceTemplate.name})</span></h4>
-                                     <div className="space-y-3 pl-2">
-                                        {items.map(item => (
-                                            <div key={item.id}>
-                                                <h5 className="font-semibold text-gray-400 text-sm mb-2">{item.name}</h5>
-                                                <div className="space-y-3 pl-2 border-l-2 border-gray-600">
-                                                    {item.attributes.map(attr => {
-                                                        const compositeId = `${item.id}_${attr.id}`;
-                                                        return (
-                                                            <div key={compositeId}>
-                                                                <label className="block text-xs font-medium text-gray-400 mb-1">{attr.name}</label>
-                                                                <AttributeInput 
-                                                                    attribute={attr} 
-                                                                    value={localEntity.attributeValues[compositeId] ?? null}
-                                                                    onChange={(value) => handleAttributeValueChange(compositeId, value)}
-                                                                    gameData={gameData}
-                                                                />
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                <div key={compositeId}>
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">{attr.name}</label>
+                                    <AttributeInput 
+                                        attribute={attr} 
+                                        value={localEntity.attributeValues[compositeId] ?? null}
+                                        onChange={(value) => handleAttributeValueChange(compositeId, value)}
+                                        gameData={gameData}
+                                    />
                                 </div>
-                            );
+                            )
                         })}
                      </fieldset>
-                )}
+                ))}
 
-                 <fieldset className="space-y-4 pt-4 border-t border-gray-700">
-                    <legend className="text-lg font-semibold text-gray-300 -mb-2 px-1">Card Image</legend>
+
+                 <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <div className="flex items-center gap-2">
+                        <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Card Image</legend>
+                        <HelpTooltip title="Card Image" content="This image is used for the background of the entity's card in the game view.\n\n- AI Background Prompt: Write a descriptive prompt for the AI to generate an image.\n- Upload Background: Upload your own image from your device.\n- Clear: Remove the current image." />
+                    </div>
                      <div>
-                        <label className="block text-sm font-medium text-gray-400">AI Background Prompt</label>
-                        <textarea value={localEntity.imagePrompt || ''} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder={`e.g., A gritty cyberpunk portrait of ${localEntity.name}...`}/>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AI Background Prompt</label>
+                            <HelpTooltip title="AI Background Prompt" content="Write a detailed, descriptive prompt for the AI to generate a background image for this entity's card. Mention themes (e.g., cyberpunk, noir), colors, lighting, and subject matter for best results." />
+                        </div>
+                        <textarea value={localEntity.imagePrompt || ''} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder={`e.g., A gritty cyberpunk portrait of ${localEntity.name}...`}/>
                         <div className="flex space-x-2 mt-2">
-                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localEntity.imagePrompt} className="flex-1 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">
+                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localEntity.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition duration-300">
                                 {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
                             </button>
-                            <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Upload Background</button>
+                            <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Background</button>
                             <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null)} className="hidden"/>
                             {localEntity.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
                         </div>
                     </div>
                 </fieldset>
                 
-                 <fieldset className="space-y-4 pt-4 border-t border-gray-700">
-                    <legend className="text-lg font-semibold text-gray-300 -mb-2 px-1">Styling</legend>
+                 <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <div className="flex items-center gap-2">
+                        <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Styling</legend>
+                        <HelpTooltip title="Card Styling" content="These options control the visual appearance of this entity's card in the game's main colony view. You can customize borders, shadows, colors, and background overlays to make important entities stand out." />
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <StyleSelect label="Border Width" value={styles.borderWidth} onChange={e => updateStyle('borderWidth', e.target.value)}><option value="none">None</option><option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option></StyleSelect>
-                        <div><label className="block text-xs font-medium text-gray-400 mb-1">Border Color</label><input type="text" value={styles.borderColor} onChange={e => updateStyle('borderColor', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2" placeholder="e.g., cyan-500"/></div>
-                        <StyleSelect label="Shadow" value={styles.shadow} onChange={e => updateStyle('shadow', e.target.value)}><option value="none">None</option><option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option><option value="xl">X-Large</option></StyleSelect>
-                        <div><label className="block text-xs font-medium text-gray-400 mb-1">Title Color Class</label><input type="text" value={styles.titleColor} onChange={e => updateStyle('titleColor', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2" placeholder="e.g., text-cyan-300"/></div>
-                        <div><label className="block text-xs font-medium text-gray-400 mb-1">Background Class</label><input type="text" value={styles.backgroundColor} onChange={e => updateStyle('backgroundColor', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2" placeholder="e.g., bg-gray-800/50"/></div>
-                        <StyleSelect label="Overlay Strength" value={styles.overlay} onChange={e => updateStyle('backgroundOverlayStrength', e.target.value)}><option value="none">None</option><option value="light">Light</option><option value="medium">Medium</option><option value="heavy">Heavy</option></StyleSelect>
+                        <StyleSelect label="Border Width" help="Controls the thickness of the card's border." value={styles.borderWidth} onChange={e => updateStyle('borderWidth', e.target.value)}><option value="none">None</option><option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option></StyleSelect>
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Border Color</label>
+                                <HelpTooltip title="Border Color" content="Sets the color of the card's border. Use Tailwind CSS color classes (e.g., 'cyan-500', 'red-500')." />
+                            </div>
+                            <input type="text" value={styles.borderColor} onChange={e => updateStyle('borderColor', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., cyan-500"/>
+                        </div>
+                        <StyleSelect label="Shadow" help="Controls the size and intensity of the drop shadow behind the card." value={styles.shadow} onChange={e => updateStyle('shadow', e.target.value)}><option value="none">None</option><option value="sm">Small</option><option value="md">Medium</option><option value="lg">Large</option><option value="xl">X-Large</option></StyleSelect>
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Title Color Class</label>
+                                <HelpTooltip title="Title Color Class" content="Sets the color of the entity's name on the card. Use Tailwind CSS text color classes (e.g., 'text-cyan-300')." />
+                            </div>
+                            <input type="text" value={styles.titleColor} onChange={e => updateStyle('titleColor', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., text-cyan-300"/>
+                        </div>
+                        <div>
+                             <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Background Class</label>
+                                <HelpTooltip title="Background Class" content="Sets the background color and opacity of the card. Use Tailwind CSS background classes (e.g., 'bg-gray-800/50'). This is visible if no image is used, or if the image has transparency." />
+                            </div>
+                            <input type="text" value={styles.backgroundColor} onChange={e => updateStyle('backgroundColor', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., bg-gray-800/50"/>
+                        </div>
+                        <StyleSelect label="Overlay Strength" help="Adds a semi-transparent black overlay on top of the background image to improve text readability." value={styles.overlay} onChange={e => updateStyle('backgroundOverlayStrength', e.target.value)}><option value="none">None</option><option value="light">Light</option><option value="medium">Medium</option><option value="heavy">Heavy</option></StyleSelect>
                     </div>
                 </fieldset>
 
                  <div>
-                    <h4 className="text-lg font-semibold text-gray-300 mb-2">Live Preview</h4>
+                    <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] mb-2">Live Preview</h4>
                     <div className={`relative ${styles.backgroundColor} ${previewClasses.border} ${previewClasses.shadow} h-64 rounded-lg backdrop-blur-sm flex flex-col overflow-hidden`}>
                         {localEntity.imageBase64 && (
                             <>
@@ -348,15 +360,15 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
                         )}
                         <div className="relative z-10 p-4 flex flex-col flex-grow">
                             <h3 className={`text-lg font-bold ${styles.titleColor} mb-2`}>{localEntity.name}</h3>
-                            <p className="text-xs text-gray-400">Preview of attributes would be shown here.</p>
+                            <p className="text-xs text-[var(--text-secondary)]">Preview of attributes would be shown here.</p>
                         </div>
                     </div>
                 </div>
 
             </main>
-             <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={handleCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+             <footer className="p-4 flex justify-end space-x-3 border-t border-[var(--border-primary)] bg-[var(--bg-panel)]/50">
+                <button onClick={handleCancel} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Changes</button>
             </footer>
         </div>
     );

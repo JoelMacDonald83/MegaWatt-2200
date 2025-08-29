@@ -1,14 +1,15 @@
 
-
-import React, { useState, useMemo, useEffect } from 'react';
-import type { GameData, PlayerChoice, ChoiceOption, StoryCard, Condition } from '../../types';
-import { StyleRadio, StyleSelect } from '../../components/editor/StyleComponents';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome } from '../../types';
+import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
 import { TrashIcon } from '../../components/icons/TrashIcon';
-import { Modal } from '../../components/Modal';
-import { StoryCardEditor } from './StoryCardEditor';
+import { PencilIcon } from '../../components/icons/PencilIcon';
 import { ConditionEditor } from './ConditionEditor';
-import { conditionToString } from '../../services/conditionEvaluator';
+import { conditionToString, outcomeToString } from '../../services/conditionEvaluator';
 import { debugService } from '../../services/debugService';
+import { OutcomeEditor } from './OutcomeEditor';
+import { PlusIcon } from '../../components/icons/PlusIcon';
+import { HelpTooltip } from '../../components/HelpTooltip';
 
 
 interface ChoiceEditorProps {
@@ -21,20 +22,23 @@ interface ChoiceEditorProps {
     isGeneratingImage: boolean;
 }
 
-type EditingCardState =
-  | { type: 'static'; optionId: string; card: Omit<StoryCard, 'id' | 'choiceId'> }
-  | { type: 'dynamic'; card: Omit<StoryCard, 'id' | 'choiceId'> }
-  | null;
-
 type EditingConditionState =
   | { type: 'static'; optionId: string; condition: Condition | null; conditionIndex?: number }
   | { type: 'dynamic'; condition: Condition | null; conditionIndex?: number }
   | null;
 
+type EditingOutcomeState =
+  | { type: 'static'; optionId: string; outcome: ChoiceOutcome | null; outcomeIndex?: number }
+  | { type: 'dynamic'; outcome: ChoiceOutcome | null; outcomeIndex?: number }
+  | null;
+
+
 export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSave, onCancel, gameData, isNew, onGenerateImage, isGeneratingImage }) => {
     const [localChoice, setLocalChoice] = useState<PlayerChoice>(() => JSON.parse(JSON.stringify(initialChoice)));
-    const [editingCardState, setEditingCardState] = useState<EditingCardState>(null);
     const [editingConditionState, setEditingConditionState] = useState<EditingConditionState>(null);
+    const [editingOutcomeState, setEditingOutcomeState] = useState<EditingOutcomeState>(null);
+    const bgInputRef = useRef<HTMLInputElement>(null);
+    const fgInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         debugService.log('ChoiceEditor: Component mounted or received new props.', { initialChoice, isNew });
@@ -42,12 +46,12 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     }, [initialChoice, isNew]);
     
     useEffect(() => {
-        debugService.log('ChoiceEditor: Editing card state changed.', { editingCardState });
-    }, [editingCardState]);
-    
-    useEffect(() => {
         debugService.log('ChoiceEditor: Editing condition state changed.', { editingConditionState });
     }, [editingConditionState]);
+
+    useEffect(() => {
+        debugService.log('ChoiceEditor: Editing outcome state changed.', { editingOutcomeState });
+    }, [editingOutcomeState]);
 
     const updateField = (field: keyof PlayerChoice, value: any) => {
         setLocalChoice(prev => {
@@ -57,19 +61,33 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         });
     };
     
-    const updatePromptStyle = (key: keyof NonNullable<PlayerChoice['styles']>['promptStyles'], value: any) => {
+    const updateStyle = (key: keyof NonNullable<PlayerChoice['styles']>, value: any) => {
         setLocalChoice(prev => {
              const newState = {
                 ...prev,
                 styles: {
                     ...(prev.styles || {}),
-                    promptStyles: {
-                        ...(prev.styles?.promptStyles || {}),
-                        [key]: value
+                    [key]: value
+                }
+            };
+            debugService.log('ChoiceEditor: Updating style', { key, value, oldState: prev, newState });
+            return newState;
+        });
+    };
+    
+     const updateFgStyle = (key: keyof NonNullable<PlayerChoice['styles']>['foregroundImageStyles'], value: any) => {
+        setLocalChoice(prev => {
+            const newState = {
+                ...prev,
+                styles: {
+                    ...prev.styles,
+                    foregroundImageStyles: {
+                        ...(prev.styles?.foregroundImageStyles || {}),
+                        [key]: value,
                     }
                 }
             };
-            debugService.log('ChoiceEditor: Updating prompt style', { key, value, oldState: prev, newState });
+            debugService.log('ChoiceEditor: Updating foreground style', { key, value, oldState: prev, newState });
             return newState;
         });
     };
@@ -83,7 +101,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                 newState.staticOptions = [];
             }
             if (newType === 'dynamic_from_template' && !prev.dynamicConfig) {
-                 newState.dynamicConfig = { sourceTemplateId: '', cardTemplate: { description: '{entity.name}', imagePrompt: '' }, outcomeTemplate: { type: 'update_entity', targetEntityId: '', attributeId: '' } };
+                 newState.dynamicConfig = { sourceTemplateId: '', optionTemplate: { text: '{entity.name}' }, outcomeTemplates: [], filterConditions: [] };
             }
             debugService.log('ChoiceEditor: Choice type changed', { oldState: prev, newState });
             return newState;
@@ -105,8 +123,8 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         setLocalChoice(prev => {
             const newOption: ChoiceOption = {
                 id: `opt_${Date.now()}`,
-                card: { description: 'New Option', imagePrompt: ''},
-                outcome: { type: 'create_entity', templateId: gameData.templates[0]?.id || '', name: 'New Entity' }
+                text: 'New Option',
+                outcomes: []
             };
             const newState = { ...prev, staticOptions: [...(prev.staticOptions || []), newOption] };
             debugService.log('ChoiceEditor: Adding static option', { newOption, oldState: prev, newState });
@@ -125,27 +143,27 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         });
     };
 
-    const handleSaveCard = (savedCard: StoryCard) => {
-        debugService.log('ChoiceEditor: Saving card from StoryCardEditor', { savedCard, editingCardState });
-        if (!editingCardState) return;
-    
-        const { id, choiceId, ...cardData } = savedCard;
-
-        if (editingCardState.type === 'static') {
-            updateStaticOption(editingCardState.optionId, { card: cardData });
-        } else if (editingCardState.type === 'dynamic') {
-            setLocalChoice(p => {
-                const newState = {
-                    ...p,
-                    dynamicConfig: { ...p.dynamicConfig!, cardTemplate: cardData }
-                };
-                debugService.log('ChoiceEditor: Updating dynamic card template', { cardData, oldState: p, newState });
-                return newState;
+    const handleGenerateImageClick = () => {
+        if (localChoice.imagePrompt) {
+            onGenerateImage(localChoice.imagePrompt, (base64) => {
+                updateField('imageBase64', `data:image/jpeg;base64,${base64}`);
             });
         }
-    
-        setEditingCardState(null);
     };
+
+    const handleFileUpload = (file: File | null, field: 'imageBase64' | 'foregroundImageBase64') => {
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (typeof e.target?.result === 'string') {
+                    updateField(field, e.target.result);
+                }
+            };
+            reader.readAsDataURL(file);
+        } else if (file) {
+            alert('Please select a valid image file.');
+        }
+    }
     
     const handleSaveCondition = (condition: Condition) => {
         debugService.log('ChoiceEditor: Saving condition from ConditionEditor', { condition, editingConditionState });
@@ -171,7 +189,8 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                 newConditions.push(condition);
             }
             setLocalChoice(p => {
-                const newState = { ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }};
+                if (!p.dynamicConfig) return p;
+                const newState = { ...p, dynamicConfig: { ...p.dynamicConfig, filterConditions: newConditions }};
                 debugService.log('ChoiceEditor: Updating dynamic filter conditions', { newConditions, oldState: p, newState });
                 return newState;
             });
@@ -190,12 +209,63 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
             if (!localChoice.dynamicConfig?.filterConditions) return;
             const newConditions = localChoice.dynamicConfig.filterConditions.filter((_, i) => i !== index);
             setLocalChoice(p => {
-                 const newState = { ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }};
+                 if (!p.dynamicConfig) return p;
+                 const newState = { ...p, dynamicConfig: { ...p.dynamicConfig, filterConditions: newConditions }};
                  debugService.log('ChoiceEditor: Removing dynamic filter condition', { index, oldState: p, newState });
                  return newState;
             });
         }
     };
+    
+    const handleSaveOutcome = (outcome: ChoiceOutcome) => {
+        debugService.log('ChoiceEditor: Saving outcome from OutcomeEditor', { outcome, editingOutcomeState });
+        if (!editingOutcomeState) return;
+        
+        if (editingOutcomeState.type === 'static') {
+            const option = (localChoice.staticOptions || []).find(o => o.id === editingOutcomeState.optionId);
+            if (!option) return;
+            const newOutcomes = [...(option.outcomes || [])];
+            if (editingOutcomeState.outcomeIndex !== undefined) {
+                newOutcomes[editingOutcomeState.outcomeIndex] = outcome;
+            } else {
+                newOutcomes.push(outcome);
+            }
+            updateStaticOption(editingOutcomeState.optionId, { outcomes: newOutcomes });
+        } else if (editingOutcomeState.type === 'dynamic') {
+            setLocalChoice(p => {
+                if (!p.dynamicConfig) return p;
+                const newOutcomes = [...p.dynamicConfig.outcomeTemplates];
+                 if (editingOutcomeState.outcomeIndex !== undefined) {
+                    newOutcomes[editingOutcomeState.outcomeIndex] = outcome;
+                } else {
+                    newOutcomes.push(outcome);
+                }
+                const newState = {...p, dynamicConfig: {...p.dynamicConfig, outcomeTemplates: newOutcomes }};
+                debugService.log('ChoiceEditor: Updating dynamic outcomes', { newOutcomes, oldState: p, newState });
+                return newState;
+            });
+        }
+
+        setEditingOutcomeState(null);
+    };
+    
+    const handleRemoveOutcome = (type: 'static' | 'dynamic', index: number, optionId?: string) => {
+         debugService.log('ChoiceEditor: Removing outcome', { type, index, optionId });
+         if (type === 'static' && optionId) {
+            const option = (localChoice.staticOptions || []).find(o => o.id === optionId);
+            if (!option || !option.outcomes) return;
+            const newOutcomes = option.outcomes.filter((_, i) => i !== index);
+            updateStaticOption(optionId, { outcomes: newOutcomes });
+        } else if (type === 'dynamic') {
+             setLocalChoice(p => {
+                if (!p.dynamicConfig) return p;
+                const newOutcomes = p.dynamicConfig.outcomeTemplates.filter((_, i) => i !== index);
+                const newState = {...p, dynamicConfig: {...p.dynamicConfig, outcomeTemplates: newOutcomes }};
+                debugService.log('ChoiceEditor: Removing dynamic outcome', { index, oldState: p, newState });
+                return newState;
+            });
+        }
+    }
 
     const handleSaveChanges = () => {
         debugService.log('ChoiceEditor: "Save Changes" button clicked. Calling onSave.', { finalChoiceState: localChoice });
@@ -207,172 +277,351 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         onCancel();
     };
 
-    const targetEntityForDynamicOutcome = useMemo(() => {
-        if (localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig?.outcomeTemplate.targetEntityId) {
-            return gameData.entities.find(e => e.id === localChoice.dynamicConfig?.outcomeTemplate.targetEntityId);
+    const styles = useMemo(() => {
+        const s = localChoice.styles || {};
+        const fgs = s.foregroundImageStyles || {};
+        return {
+            textPosition: s.textPosition || 'bottom',
+            textAlign: s.textAlign || 'center',
+            textColor: s.textColor || 'text-white',
+            overlayStrength: s.overlayStrength || 'medium',
+            backgroundAnimation: s.backgroundAnimation || 'kenburns-normal',
+            backgroundAnimationDuration: s.backgroundAnimationDuration || 30,
+            fontFamily: s.fontFamily || 'sans',
+            fontSize: s.fontSize || 'normal',
+            textWidth: s.textWidth || 'medium',
+            backgroundEffect: s.backgroundEffect || 'none',
+            cardTransition: s.cardTransition || 'fade',
+            cardTransitionDuration: s.cardTransitionDuration || 0.6,
+            textAnimation: s.textAnimation || 'fade-in',
+            textAnimationDuration: s.textAnimationDuration || 1,
+            textAnimationDelay: s.textAnimationDelay || 0.5,
+            fg: {
+                position: fgs.position || 'center',
+                size: fgs.size || 'medium',
+                animation: fgs.animation || 'fade-in',
+                animationDuration: fgs.animationDuration || 1,
+                animationDelay: fgs.animationDelay || 1,
+            }
         }
-        return null;
-    }, [localChoice.dynamicConfig?.outcomeTemplate.targetEntityId, gameData.entities, localChoice.choiceType]);
+    }, [localChoice.styles]);
 
-    const targetTemplateForDynamicOutcome = useMemo(() => {
-        if (targetEntityForDynamicOutcome) {
-            return gameData.templates.find(t => t.id === targetEntityForDynamicOutcome.templateId);
-        }
-        return null;
-    }, [targetEntityForDynamicOutcome, gameData.templates]);
-
+    // Preview Classes
+    const previewPositionClasses = { top: 'justify-start', middle: 'justify-center', bottom: 'justify-end' }[styles.textPosition];
+    const previewTextAlignClasses = { left: 'text-left', center: 'text-center', right: 'text-right' }[styles.textAlign];
+    const previewFlexAlignClasses = { left: 'items-start', center: 'items-center', right: 'items-end' }[styles.textAlign];
+    const previewFontClass = { sans: 'font-sans', serif: 'font-serif', mono: 'font-mono' }[styles.fontFamily];
+    const previewFontSizeClass = { normal: 'text-[0.5rem] leading-tight', large: 'text-[0.6rem] leading-tight', xlarge: 'text-[0.7rem] leading-tight', xxlarge: 'text-[0.8rem] leading-tight' }[styles.fontSize];
+    const previewWidthClass = { narrow: 'w-1/2', medium: 'w-3/4', wide: 'w-full' }[styles.textWidth];
+    const previewBgEffectClass = { none: '', blur: 'blur-sm', darken: 'brightness-75' }[styles.backgroundEffect];
+    
+    const previewFgPositionClass = { left: 'justify-start', center: 'justify-center', right: 'justify-end'}[styles.fg.position];
+    const previewFgSizeClass = { small: 'w-1/4', medium: 'w-1/3', large: 'w-1/2'}[styles.fg.size];
+    const previewFgAnimationClass = `anim-fg-${styles.fg.animation}`;
+    const previewFgAnimationStyle = { animationDuration: `${styles.fg.animationDuration}s`, animationDelay: `${styles.fg.animationDelay}s`};
+    const previewFgAnimationKey = `fg-anim-key-${styles.fg.animation}-${styles.fg.animationDuration}-${styles.fg.animationDelay}`;
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-800 min-h-0">
-            <header className="p-4 border-b border-gray-700">
-                <h2 className="text-xl font-bold text-cyan-300">{isNew ? 'Creating New Choice' : `Editing Choice: ${initialChoice.name}`}</h2>
+        <div className="flex-1 flex flex-col bg-[var(--bg-panel)] min-h-0">
+            <header className="p-4 border-b border-[var(--border-primary)]">
+                <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{isNew ? 'Creating New Scene' : `Editing Scene: ${initialChoice.name}`}</h2>
             </header>
             <main className="flex-grow p-6 space-y-6 overflow-y-auto">
                  <div>
-                    <label className="block text-sm font-medium text-gray-400">Name (for Editor)</label>
-                    <input type="text" value={localChoice.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Name (for Editor)</label>
+                        <HelpTooltip title="Scene Name" content="The name of this scene as it appears in the editor's scene list. This is for your organizational purposes and is not shown to the player." />
+                    </div>
+                    <input type="text" value={localChoice.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
                 </div>
                  <div>
-                    <label className="block text-sm font-medium text-gray-400">Player Prompt</label>
-                    <input type="text" value={localChoice.prompt} onChange={e => updateField('prompt', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Description</label>
+                        <HelpTooltip title="Scene Description" content="This is the main narrative text for the scene, which is displayed to the player. It sets the context for the choice or continues the story." />
+                    </div>
+                    <textarea value={localChoice.description} onChange={e => updateField('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
+                </div>
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AI Background Prompt</label>
+                        <HelpTooltip title="AI Background Prompt" content="Write a detailed, descriptive prompt for the AI to generate a background image for this scene. Mention themes (e.g., cyberpunk, noir), colors, lighting, and subject matter for best results." />
+                    </div>
+                    <textarea value={localChoice.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
+                    <div className="flex space-x-2 mt-2">
+                        <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition duration-300">
+                            {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
+                        </button>
+                        <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Background</button>
+                        <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
+                         {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                    </div>
                 </div>
 
-                <fieldset className="space-y-2 pt-4 border-t border-gray-700">
-                    <legend className="text-sm font-semibold text-gray-400 -mb-2 px-1">Prompt Styling</legend>
-                    <div className="grid grid-cols-2 gap-4">
-                        <StyleSelect 
-                            label="Font Size" 
-                            value={localChoice.styles?.promptStyles?.fontSize || 'large'}
-                            onChange={e => updatePromptStyle('fontSize', e.target.value)}
-                        >
-                            <option value="normal">Normal</option>
-                            <option value="large">Large</option>
-                            <option value="xlarge">X-Large</option>
-                            <option value="xxlarge">XX-Large</option>
-                        </StyleSelect>
+                <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Styling</legend>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <StyleSelect label="Text Position" help="Sets the vertical alignment of the scene text (top, middle, or bottom)." value={styles.textPosition} onChange={e => updateStyle('textPosition', e.target.value)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></StyleSelect>
+                        <StyleSelect label="Text Alignment" help="Sets the horizontal alignment of the scene text (left, center, or right)." value={styles.textAlign} onChange={e => updateStyle('textAlign', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
                         <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-1">Text Color Class</label>
-                            <input 
-                                type="text" 
-                                value={localChoice.styles?.promptStyles?.textColor || 'text-cyan-200'}
-                                onChange={e => updatePromptStyle('textColor', e.target.value)}
-                                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
-                                placeholder="e.g. text-cyan-200"
-                            />
+                            <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Text Color Class</label>
+                                <HelpTooltip title="Text Color Class" content="Controls the color of the main description text. Use Tailwind CSS classes (e.g., 'text-white', 'text-cyan-200')." />
+                            </div>
+                            <input type="text" value={styles.textColor} onChange={e => updateStyle('textColor', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g. text-white"/>
                         </div>
+                        <StyleSelect label="Font Family" help="Sets the font style for the scene's text." value={styles.fontFamily} onChange={e => updateStyle('fontFamily', e.target.value)}><option value="sans">Sans-Serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></StyleSelect>
+                        <StyleSelect label="Font Size" help="Controls the size of the main description text." value={styles.fontSize} onChange={e => updateStyle('fontSize', e.target.value)}><option value="normal">Normal</option><option value="large">Large</option><option value="xlarge">X-Large</option><option value="xxlarge">XX-Large</option></StyleSelect>
+                        <StyleSelect label="Text Width" help="Controls the maximum width of the text block, useful for readability." value={styles.textWidth} onChange={e => updateStyle('textWidth', e.target.value)}><option value="narrow">Narrow</option><option value="medium">Medium</option><option value="wide">Wide</option></StyleSelect>
+                        <StyleSelect label="Overlay Strength" help="Adds a semi-transparent black overlay on top of the background image to improve text readability." value={styles.overlayStrength} onChange={e => updateStyle('overlayStrength', e.target.value)}><option value="none">None</option><option value="light">Light</option><option value="medium">Medium</option><option value="heavy">Heavy</option></StyleSelect>
+                        <StyleSelect label="Background Effect" help="Applies a visual effect to the entire background image." value={styles.backgroundEffect} onChange={e => updateStyle('backgroundEffect', e.target.value)}><option value="none">None</option><option value="blur">Blur</option><option value="darken">Darken</option></StyleSelect>
+                        <div className="grid grid-cols-[2fr_1fr] gap-2"><StyleSelect wrapperClassName="col-span-2" help="Adds a subtle animation to the background image, like a slow zoom or pan." label="Background Animation" value={styles.backgroundAnimation} onChange={e => updateStyle('backgroundAnimation', e.target.value)}><option value="kenburns-normal">Ken Burns Normal</option><option value="kenburns-subtle">Ken Burns Subtle</option><option value="pan-left">Pan Left</option><option value="pan-right">Pan Right</option><option value="zoom-out">Zoom Out</option><option value="none">None</option></StyleSelect><StyleNumberInput wrapperClassName="col-span-2" label="Duration (s)" value={styles.backgroundAnimationDuration} onChange={e => updateStyle('backgroundAnimationDuration', e.target.valueAsNumber)} /></div>
+                        <div className="grid grid-cols-[2fr_1fr] gap-2"><StyleSelect wrapperClassName="col-span-2" help="Controls how this scene appears and the previous one disappears." label="Scene Transition" value={styles.cardTransition} onChange={e => updateStyle('cardTransition', e.target.value)}><option value="fade">Fade</option><option value="dissolve">Dissolve</option><option value="slide-left">Slide Left</option><option value="slide-up">Slide Up</option><option value="zoom-in">Zoom In</option></StyleSelect><StyleNumberInput wrapperClassName="col-span-2" label="Duration (s)" value={styles.cardTransitionDuration} onChange={e => updateStyle('cardTransitionDuration', e.target.valueAsNumber)} /></div>
+                        <div className="grid grid-cols-2 gap-2"><StyleSelect wrapperClassName="col-span-2" label="Text Animation" help="Controls how the main description text appears on screen." value={styles.textAnimation} onChange={e => updateStyle('textAnimation', e.target.value)}><option value="fade-in">Fade In</option><option value="rise-up">Rise Up</option><option value="typewriter">Typewriter</option><option value="none">None</option></StyleSelect><StyleNumberInput label="Duration (s)" value={styles.textAnimationDuration} onChange={e => updateStyle('textAnimationDuration', e.target.valueAsNumber)} /><StyleNumberInput label="Delay (s)" value={styles.textAnimationDelay} onChange={e => updateStyle('textAnimationDelay', e.target.valueAsNumber)} /></div>
                     </div>
-                </fieldset>
-                
-                 <div className="space-y-4 pt-4 border-t border-gray-700">
-                    <StyleRadio label="Choice Type" name="choiceType" value={localChoice.choiceType} onChange={handleChoiceTypeChange} options={[{value: 'static', label: 'Static'}, {value: 'dynamic_from_template', label: 'Dynamic'}]} />
-                    
-                    {localChoice.choiceType === 'static' && (
-                        <div className="space-y-3">
-                            <h3 className="text-lg font-semibold text-gray-300">Static Options</h3>
-                            {(localChoice.staticOptions || []).map(opt => (
-                                <div key={opt.id} className="bg-gray-900/50 p-3 rounded-md border border-gray-700 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-gray-300">{opt.card.description?.substring(0, 50) || 'Untitled Card'}...</p>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => setEditingCardState({ type: 'static', optionId: opt.id, card: opt.card })} className="text-sm text-cyan-400 hover:text-cyan-300">Edit Card</button>
-                                            <button className="text-sm text-gray-400 hover:text-white">Outcome</button>
-                                            <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4"/></button>
-                                        </div>
-                                    </div>
-                                    <div className="pt-2 border-t border-gray-700">
-                                        <h4 className="text-xs font-semibold text-gray-400 mb-1">Conditions (Must all be true)</h4>
-                                        <div className="space-y-1">
-                                            {(opt.conditions || []).map((cond, index) => (
-                                                <div key={index} className="text-xs flex justify-between items-center bg-gray-800 p-1 rounded">
-                                                    <span className="text-gray-300">{conditionToString(cond, gameData)}</span>
-                                                    <button onClick={() => handleRemoveCondition('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-red-500"/></button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-xs mt-1 text-cyan-400 hover:text-cyan-300 w-full text-left">+ Add Condition</button>
-                                    </div>
-                                </div>
-                            ))}
-                            <button onClick={addStaticOption} disabled={gameData.templates.length === 0} className="w-full text-sm bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded transition duration-300 disabled:bg-gray-600 disabled:text-gray-400">Add Option</button>
+                 </fieldset>
+
+                 <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <div className="flex items-center gap-2">
+                        <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Foreground Image</legend>
+                        <HelpTooltip title="Foreground Image" content="Upload an image (ideally with a transparent background, like a PNG) to be layered on top of the background. This is great for character sprites, objects, or UI elements." />
+                    </div>
+                    <div className="flex space-x-2">
+                        <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Foreground</button>
+                        <input type="file" accept="image/*" ref={fgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'foregroundImageBase64')} className="hidden"/>
+                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                    </div>
+                    {localChoice.foregroundImageBase64 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                             <StyleSelect label="Position" help="The horizontal position of the foreground image." value={styles.fg.position} onChange={e => updateFgStyle('position', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
+                             <StyleSelect label="Size" help="The relative size of the foreground image." value={styles.fg.size} onChange={e => updateFgStyle('size', e.target.value)}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></StyleSelect>
+                             <div></div>
+                             <div className="grid grid-cols-2 gap-2">
+                                <StyleSelect wrapperClassName="col-span-2" label="Animation" help="How the foreground image appears on screen." value={styles.fg.animation} onChange={e => updateFgStyle('animation', e.target.value)}><option value="none">None</option><option value="fade-in">Fade In</option><option value="slide-in-left">Slide-in Left</option><option value="slide-in-right">Slide-in Right</option><option value="zoom-in">Zoom In</option></StyleSelect>
+                                <StyleNumberInput label="Duration (s)" value={styles.fg.animationDuration} onChange={e => updateFgStyle('animationDuration', e.target.valueAsNumber)} />
+                                <StyleNumberInput label="Delay (s)" value={styles.fg.animationDelay} onChange={e => updateFgStyle('animationDelay', e.target.valueAsNumber)} />
+                             </div>
                         </div>
                     )}
-
-                    {localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig && (
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-300">Dynamic Options</h3>
-                             <StyleSelect label="Source Template" value={localChoice.dynamicConfig.sourceTemplateId} onChange={e => setLocalChoice(p => ({...p, dynamicConfig: {...p.dynamicConfig!, sourceTemplateId: e.target.value}}))}>
-                                <option value="">-- Select Template --</option>
-                                {gameData.templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </StyleSelect>
-
-                            <fieldset className="p-3 border border-gray-700 rounded-md">
-                                <legend className="text-sm font-semibold text-gray-400 px-2">Card Template</legend>
-                                 <p className="text-xs text-gray-500 mb-2">Define how each entity from the source template will be displayed. Use placeholders like <code className="bg-gray-950 p-1 rounded text-cyan-400">{`{entity.name}`}</code> or <code className="bg-gray-950 p-1 rounded text-cyan-400">{`{entity.attributeValues.ATTR_ID}`}</code>.</p>
-                                <button onClick={() => setEditingCardState({ type: 'dynamic', card: localChoice.dynamicConfig!.cardTemplate })} className="w-full text-sm bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded transition duration-300">Edit Card Template</button>
-                            </fieldset>
+                 </fieldset>
+                
+                <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                    <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] px-1">Logic & Navigation</legend>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Player Prompt</label>
+                            <HelpTooltip title="Player Prompt" content="This is the question or statement presented to the player when they have to make a choice. If you leave this field blank, the scene will be treated as a linear narrative beat, and a single 'Continue' button will be shown instead of options." />
+                        </div>
+                        <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="(Optional: Leave blank for a linear scene)"/>
+                    </div>
+                    
+                    {localChoice.prompt ? (
+                        <div className="p-3 bg-[var(--bg-input)]/40 rounded-lg border border-[var(--border-primary)]">
+                            <StyleRadio 
+                                label="Choice Type"
+                                name="choiceType"
+                                value={localChoice.choiceType}
+                                onChange={handleChoiceTypeChange}
+                                options={[{value: 'static', label: 'Static Options'}, {value: 'dynamic_from_template', label: 'Dynamic Options'}]}
+                                help={"Static Choices: You write each option by hand. Use this for specific dialogue, actions, or moral dilemmas.\n\nDynamic Choices: The game generates a list of options automatically from a template (e.g., list all available characters). Use this when the available options depend on the current game state."}
+                            />
                             
-                             <fieldset className="p-3 border border-gray-700 rounded-md">
-                                <legend className="text-sm font-semibold text-gray-400 px-2">Filter Conditions</legend>
-                                <p className="text-xs text-gray-500 mb-2">Only show entities from the source template if they meet all these conditions.</p>
-                                <div className="space-y-1">
-                                    {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
-                                        <div key={index} className="text-xs flex justify-between items-center bg-gray-800 p-1 rounded">
-                                            <span className="text-gray-300">{conditionToString(cond, gameData, true)}</span>
-                                            <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-3 h-3 text-red-500"/></button>
+                            {/* STATIC OPTIONS UI */}
+                            {localChoice.choiceType === 'static' && (
+                                <div className="space-y-3 mt-4">
+                                    {(localChoice.staticOptions || []).map(opt => (
+                                        <div key={opt.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md border border-[var(--border-primary)] space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex-grow mr-2">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <label className="text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Option Text</label>
+                                                        <HelpTooltip title="Option Text" content="This is the text the player will see and click on for this choice." />
+                                                    </div>
+                                                    <input type="text" value={opt.text} onChange={e => updateStaticOption(opt.id, { text: e.target.value })} placeholder="Option Text" className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                                                </div>
+                                                <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-danger)] self-end mb-2"><TrashIcon className="w-4 h-4"/></button>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0 md:border-r md:pr-4">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Conditions</h4>
+                                                        <HelpTooltip title="Option Conditions" content="Conditions determine if this option is visible to the player. ALL conditions listed here must be true for the option to appear. If there are no conditions, the option is always visible." />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {(opt.conditions || []).map((cond, index) => (
+                                                            <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
+                                                                <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData)}</span>
+                                                                <div className="flex-shrink-0">
+                                                                <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: cond, conditionIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                                <button onClick={() => handleRemoveCondition('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Condition</button>
+                                                </div>
+                                                <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Outcomes</h4>
+                                                        <HelpTooltip title="Option Outcomes" content="Outcomes are the consequences of choosing this option. They are executed immediately when the player clicks the option. You can use outcomes to create new entities, update existing ones, change character stats, etc." />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {(opt.outcomes || []).map((outcome, index) => (
+                                                             <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
+                                                                <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
+                                                                <div className="flex-shrink-0">
+                                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                                    <button onClick={() => handleRemoveOutcome('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <StyleSelect 
+                                                    label="Next Scene" 
+                                                    value={opt.nextChoiceId || ''} 
+                                                    onChange={e => updateStaticOption(opt.id, { nextChoiceId: e.target.value || null })}
+                                                    help="The scene that will be shown after the player makes this choice and its outcomes are executed. If left as '-- End of Path --', this choice concludes this branch of the story."
+                                                >
+                                                    <option value="">-- End of Path --</option>
+                                                    {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </StyleSelect>
+                                            </div>
                                         </div>
                                     ))}
+                                    <button onClick={addStaticOption} className="mt-4 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Static Option</button>
                                 </div>
-                                <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-xs mt-1 text-cyan-400 hover:text-cyan-300 w-full text-left">+ Add Filter Condition</button>
-                             </fieldset>
+                            )}
 
-                             <fieldset className="p-3 border border-gray-700 rounded-md">
-                                <legend className="text-sm font-semibold text-gray-400 px-2">Outcome</legend>
-                                <p className="text-xs text-gray-500 mb-2">Define what happens when the player chooses one of the generated cards. The chosen entity's ID will be used as the value.</p>
-                                <div className="space-y-2">
-                                     <StyleSelect label="Target Entity to Update" value={localChoice.dynamicConfig.outcomeTemplate.targetEntityId} onChange={e => setLocalChoice(p => ({...p, dynamicConfig: {...p.dynamicConfig!, outcomeTemplate: {...p.dynamicConfig!.outcomeTemplate, targetEntityId: e.target.value, attributeId: ''}}}))}>
-                                        <option value="">-- Select Target Entity --</option>
-                                        {gameData.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                            {/* DYNAMIC OPTIONS UI */}
+                            {localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig && (
+                                <div className="space-y-4 mt-4">
+                                    <StyleSelect 
+                                        label="Source Template" 
+                                        value={localChoice.dynamicConfig.sourceTemplateId}
+                                        onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateId: e.target.value })}
+                                        help="Select a template. The game will generate one choice option for every entity that exists from this template."
+                                    >
+                                        <option value="">-- Select Template --</option>
+                                        {gameData.templates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </StyleSelect>
-                                     {targetTemplateForDynamicOutcome && (
-                                        <StyleSelect label="Attribute to Update" value={localChoice.dynamicConfig.outcomeTemplate.attributeId} onChange={e => setLocalChoice(p => ({...p, dynamicConfig: {...p.dynamicConfig!, outcomeTemplate: {...p.dynamicConfig!.outcomeTemplate, attributeId: e.target.value}}}))}
-                                            disabled={!targetTemplateForDynamicOutcome}
-                                        >
-                                            <option value="">-- Select Attribute --</option>
-                                            {targetTemplateForDynamicOutcome.attributes.filter(a => a.type === 'entity_reference' && a.referencedTemplateId === localChoice.dynamicConfig?.sourceTemplateId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                        </StyleSelect>
-                                     )}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <label className="text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Option Text Template</label>
+                                            <HelpTooltip title="Option Text Template" content="Define how the text for each generated option will look. You can use placeholders to insert data from the entity that generated the option. Available placeholders: {entity.name}, {template.name}, and {entity.attributeValues.ATTRIBUTE_ID}." />
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={localChoice.dynamicConfig.optionTemplate.text}
+                                            onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, optionTemplate: { text: e.target.value }})}
+                                            className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0 md:border-r md:pr-4">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Filters</h4>
+                                                <HelpTooltip title="Dynamic Option Filters" content="Add conditions here to filter which entities from the source template will be turned into options. For example, you could filter to only show 'Character' entities that have the 'Pilot' role." />
+                                            </div>
+                                            <div className="space-y-1">
+                                                {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
+                                                    <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
+                                                        <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData, true)}</span>
+                                                        <div className="flex-shrink-0">
+                                                        <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: cond, conditionIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                        <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Filter</button>
+                                        </div>
+                                        <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Outcome Templates</h4>
+                                                <HelpTooltip title="Dynamic Outcome Templates" content="Define the outcomes that will happen when a player picks ANY of the generated options. You can use special placeholders like '<The Chosen Entity>' to refer to the entity the player selected." />
+                                            </div>
+                                            <div className="space-y-1">
+                                                {(localChoice.dynamicConfig.outcomeTemplates || []).map((outcome, index) => (
+                                                    <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
+                                                        <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
+                                                        <div className="flex-shrink-0">
+                                                        <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                        <button onClick={() => handleRemoveOutcome('dynamic', index)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                        </div>
+                                    </div>
+                                    <StyleSelect 
+                                        label="Next Scene"
+                                        value={localChoice.dynamicConfig.nextChoiceId || ''}
+                                        onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, nextChoiceId: e.target.value || null })}
+                                        help="The scene that will be shown after the player makes a dynamic choice."
+                                    >
+                                        <option value="">-- End of Path --</option>
+                                        {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </StyleSelect>
                                 </div>
-                            </fieldset>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            <StyleSelect 
+                                label="Next Scene (Linear)" 
+                                value={localChoice.nextChoiceId || ''} 
+                                onChange={e => updateField('nextChoiceId', e.target.value || null)}
+                                help="Since there is no player prompt, this scene will automatically transition to the selected scene when the player clicks 'Continue'."
+                            >
+                                <option value="">-- End of Path --</option>
+                                {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </StyleSelect>
                         </div>
                     )}
+                </fieldset>
+
+                <div>
+                    <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] mb-2">Live Preview</h4>
+                    <div className="relative aspect-video w-full max-w-lg bg-[var(--bg-main)] rounded-lg border border-[var(--border-secondary)] overflow-hidden">
+                        {localChoice.imageBase64 && <img src={localChoice.imageBase64} className={`absolute inset-0 w-full h-full object-cover transition-all ${previewBgEffectClass}`} />}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
+                        <div className={`absolute inset-0 flex p-2 ${previewPositionClasses} ${previewFlexAlignClasses}`}>
+                            <div className={`${previewWidthClass} ${previewTextAlignClasses}`}>
+                                <p className={`${localChoice.styles?.textColor || 'text-white'} ${previewFontClass} ${previewFontSizeClass} [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]`}>
+                                    {localChoice.description.substring(0, 100)}{localChoice.description.length > 100 ? '...' : ''}
+                                </p>
+                                {localChoice.prompt && (
+                                    <div className="mt-4">
+                                        <p className="text-cyan-200 text-[0.6rem] mb-2">{localChoice.prompt}</p>
+                                        <div className="flex justify-center gap-2 flex-wrap">
+                                            <button className="text-[0.5rem] bg-gray-800/60 text-white font-semibold py-1 px-3 rounded-md">Option 1</button>
+                                            <button className="text-[0.5rem] bg-gray-800/60 text-white font-semibold py-1 px-3 rounded-md">Option 2</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {localChoice.foregroundImageBase64 && (
+                            <div className={`absolute inset-0 flex items-center p-4 ${previewFgPositionClass}`}>
+                                <img 
+                                    key={previewFgAnimationKey}
+                                    src={localChoice.foregroundImageBase64} 
+                                    className={`object-contain ${previewFgSizeClass} max-h-full ${previewFgAnimationClass}`}
+                                    style={previewFgAnimationStyle}
+                                    alt="Foreground Preview"/>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </main>
-            <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={handleCancelClick} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+            <footer className="p-4 flex justify-end space-x-3 border-t border-[var(--border-primary)] bg-[var(--bg-panel)]/50">
+                <button onClick={handleCancelClick} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Changes</button>
             </footer>
 
-            <Modal
-                isOpen={!!editingCardState}
-                onClose={() => setEditingCardState(null)}
-                title={editingCardState?.type === 'static' ? 'Edit Option Card' : 'Edit Card Template'}
-            >
-                {editingCardState && (
-                    <div className="-m-6">
-                        <StoryCardEditor
-                            key={editingCardState.type === 'static' ? editingCardState.optionId : 'dynamic-card-editor'}
-                            initialCard={editingCardState.card as StoryCard}
-                            onSave={handleSaveCard}
-                            onCancel={() => setEditingCardState(null)}
-                            onGenerateImage={onGenerateImage}
-                            isGenerating={isGeneratingImage}
-                            isNew={false}
-                            isChoiceCard={true}
-                        />
-                    </div>
-                )}
-            </Modal>
-            
             {editingConditionState && (
                 <ConditionEditor
                     isOpen={!!editingConditionState}
@@ -383,6 +632,17 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     isFilter={editingConditionState.type === 'dynamic'}
                 />
             )}
+
+            {editingOutcomeState && (
+                <OutcomeEditor
+                    isOpen={!!editingOutcomeState}
+                    onClose={() => setEditingOutcomeState(null)}
+                    onSave={handleSaveOutcome}
+                    gameData={gameData}
+                    initialOutcome={editingOutcomeState.outcome}
+                    isDynamicContext={editingOutcomeState.type === 'dynamic'}
+                />
+            )}
         </div>
     );
-};
+}

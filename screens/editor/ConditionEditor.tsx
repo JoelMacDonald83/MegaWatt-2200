@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../../components/Modal';
-import { GameData, Condition, ConditionOperator, AttributeDefinition } from '../../types';
+import { GameData, Condition, ConditionOperator, AttributeDefinition, Template } from '../../types';
 import { StyleSelect } from '../../components/editor/StyleComponents';
 import { debugService } from '../../services/debugService';
+import { HelpTooltip } from '../../components/HelpTooltip';
 
 interface ConditionEditorProps {
     isOpen: boolean;
@@ -62,6 +63,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
         return gameData.entities.find(e => e.id === attrCondition.targetEntityId);
     }, [attrCondition.targetEntityId, gameData.entities]);
     
+    // Fix: Replaced `includedStuff` and `gameData.stuff` with logic to resolve inherited attributes and components.
     const availableAttributes = useMemo((): {id: string, name: string}[] => {
         // For dynamic filters, we can't know the entity, so we need a representative template.
         // This part of the UI logic would need to be passed the sourceTemplateId for full accuracy.
@@ -69,31 +71,47 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
         const targetEntity = isFilter ? gameData.entities[0] : selectedEntityForAttr;
         if (!targetEntity) return [];
 
-        const template = gameData.templates.find(t => t.id === targetEntity.templateId);
+        let template = gameData.templates.find(t => t.id === targetEntity.templateId);
         if (!template) return [];
         
-        // This should walk up the inheritance chain similar to EntityEditor
-        const baseAttrs = template.attributes.map(a => ({ id: a.id, name: `${a.name} (Base)` }));
-
-        const stuffAttrs = (template.includedStuff || []).flatMap(is => {
-            const stuffSet = gameData.stuff.find(s => s.id === is.setId);
-            if (!stuffSet) return [];
-            return is.itemIds.flatMap(itemId => {
-                const item = stuffSet.items.find(i => i.id === itemId);
-                if (!item) return [];
-                return item.attributes.map(attr => ({
-                    id: `${item.id}_${attr.id}`,
-                    name: `${attr.name} (${item.name})`
-                }));
+        const hierarchy: Template[] = [];
+        let current: Template | undefined = template;
+        while(current) {
+            hierarchy.push(current);
+            current = gameData.templates.find(t => t.id === current?.parentId);
+        }
+        
+        const allBaseAttributes: { id: string; name: string; }[] = [];
+        const allComponentIds = new Set<string>();
+        const seenAttributeIds = new Set<string>();
+        
+        // Get attributes and components from the full hierarchy
+        hierarchy.forEach(temp => {
+            temp.attributes.forEach(attr => {
+                if (!seenAttributeIds.has(attr.id)) {
+                    allBaseAttributes.push({ id: attr.id, name: `${attr.name} (${temp.name})` });
+                    seenAttributeIds.add(attr.id);
+                }
             });
+            (temp.includedComponentIds || []).forEach(id => allComponentIds.add(id));
         });
 
-        return [...baseAttrs, ...stuffAttrs];
-    }, [selectedEntityForAttr, gameData, isFilter]);
+        const componentAttrs = Array.from(allComponentIds).flatMap(componentId => {
+            const componentTemplate = gameData.templates.find(t => t.id === componentId);
+            if (!componentTemplate) return [];
+            return componentTemplate.attributes.map(attr => ({
+                id: `${componentTemplate.id}_${attr.id}`,
+                name: `${attr.name} (${componentTemplate.name})`
+            }));
+        });
 
+        return [...allBaseAttributes, ...componentAttrs];
+    }, [selectedEntityForAttr, gameData.entities, gameData.templates, isFilter]);
+
+    // Fix: Replaced `gameData.stuff` with a filter on `gameData.templates` to get components.
     const allStuffItems = useMemo(() => {
-        return gameData.stuff.flatMap(set => set.items.map(item => ({...item, setName: set.name})));
-    }, [gameData.stuff]);
+        return gameData.templates.filter(t => t.isComponent).map(item => ({...item, setName: 'Component'}));
+    }, [gameData.templates]);
 
 
     const handleSave = () => {
@@ -122,19 +140,35 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
     const renderAttributeEditor = () => (
         <div className="space-y-3">
             {!isFilter && (
-                 <StyleSelect label="Target Entity" value={attrCondition.targetEntityId} onChange={e => setAttrCondition(p => ({ ...p, targetEntityId: e.target.value, attributeId: '' }))}>
+                 <StyleSelect 
+                    label="Target Entity" 
+                    value={attrCondition.targetEntityId} 
+                    onChange={e => setAttrCondition(p => ({ ...p, targetEntityId: e.target.value, attributeId: '' }))}
+                    help="The specific entity whose attribute you want to check."
+                 >
                     <option value="">-- Select Entity --</option>
                     {gameData.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </StyleSelect>
             )}
 
-             <StyleSelect label="Attribute" value={attrCondition.attributeId} onChange={e => setAttrCondition(p => ({ ...p, attributeId: e.target.value }))} disabled={!isFilter && !selectedEntityForAttr}>
+             <StyleSelect 
+                label="Attribute" 
+                value={attrCondition.attributeId} 
+                onChange={e => setAttrCondition(p => ({ ...p, attributeId: e.target.value }))} 
+                disabled={!isFilter && !selectedEntityForAttr}
+                help="The attribute on the target entity that you want to check."
+            >
                 <option value="">-- Select Attribute --</option>
                 {availableAttributes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </StyleSelect>
 
             <div className="grid grid-cols-2 gap-3">
-                 <StyleSelect label="Operator" value={attrCondition.operator} onChange={e => setAttrCondition(p => ({...p, operator: e.target.value as ConditionOperator}))}>
+                 <StyleSelect 
+                    label="Operator" 
+                    value={attrCondition.operator} 
+                    onChange={e => setAttrCondition(p => ({...p, operator: e.target.value as ConditionOperator}))}
+                    help="The type of comparison to perform."
+                 >
                     <option value="==">Equals (==)</option>
                     <option value="!=">Not Equals (!=)</option>
                     <option value=">">Greater Than (&gt;)</option>
@@ -143,7 +177,10 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
                     <option value="<=">Less Than or Equals (&lt;=)</option>
                  </StyleSelect>
                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Value</label>
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="block text-xs font-medium text-gray-400">Value</label>
+                        <HelpTooltip title="Comparison Value" content="The value to compare against the attribute. Leave this blank to check if an attribute 'is set' or 'is not set' (using 'Equals' or 'Not Equals')." />
+                    </div>
                     <input type="text" value={attrCondition.value === null ? '' : String(attrCondition.value)} onChange={e => setAttrCondition(p => ({ ...p, value: e.target.value === '' ? null : e.target.value }))} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm" placeholder="Leave blank for 'not set'"/>
                 </div>
             </div>
@@ -152,11 +189,21 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
     
     const renderEntityExistsEditor = () => (
         <div className="space-y-3">
-            <StyleSelect label="Template" value={existsCondition.templateId} onChange={e => setExistsCondition(p => ({ ...p, templateId: e.target.value }))}>
+            <StyleSelect 
+                label="Template" 
+                value={existsCondition.templateId} 
+                onChange={e => setExistsCondition(p => ({ ...p, templateId: e.target.value }))}
+                help="Check if any entity created from this template exists in the game world."
+            >
                 <option value="">-- Select Template --</option>
                 {gameData.templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </StyleSelect>
-            <StyleSelect label="Condition" value={String(existsCondition.exists)} onChange={e => setExistsCondition(p => ({ ...p, exists: e.target.value === 'true' }))}>
+            <StyleSelect 
+                label="Condition" 
+                value={String(existsCondition.exists)} 
+                onChange={e => setExistsCondition(p => ({ ...p, exists: e.target.value === 'true' }))}
+                help="Define whether this condition should pass if the entity exists or if it does not exist."
+            >
                 <option value="true">Exists</option>
                 <option value="false">Does Not Exist</option>
             </StyleSelect>
@@ -165,15 +212,30 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
 
     const renderHasStuffEditor = () => (
          <div className="space-y-3">
-             <StyleSelect label="Target Entity" value={stuffCondition.targetEntityId} onChange={e => setStuffCondition(p => ({...p, targetEntityId: e.target.value }))}>
+             <StyleSelect 
+                label="Target Entity" 
+                value={stuffCondition.targetEntityId} 
+                onChange={e => setStuffCondition(p => ({...p, targetEntityId: e.target.value }))}
+                help="The specific entity to check for a component."
+            >
                 <option value="">-- Select Entity --</option>
                 {gameData.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </StyleSelect>
-            <StyleSelect label="Stuff Item" value={stuffCondition.stuffItemId} onChange={e => setStuffCondition(p => ({...p, stuffItemId: e.target.value }))}>
+            <StyleSelect 
+                label="Component Item" 
+                value={stuffCondition.stuffItemId} 
+                onChange={e => setStuffCondition(p => ({...p, stuffItemId: e.target.value }))}
+                help="The component to check for. The check passes if the entity's template (or any of its parents) includes this component."
+            >
                 <option value="">-- Select Item --</option>
                 {allStuffItems.map(item => <option key={item.id} value={item.id}>{item.name} ({item.setName})</option>)}
             </StyleSelect>
-             <StyleSelect label="Condition" value={String(stuffCondition.hasIt)} onChange={e => setStuffCondition(p => ({ ...p, hasIt: e.target.value === 'true' }))}>
+             <StyleSelect 
+                label="Condition" 
+                value={String(stuffCondition.hasIt)} 
+                onChange={e => setStuffCondition(p => ({ ...p, hasIt: e.target.value === 'true' }))}
+                help="Define whether this condition should pass if the entity has the component or if it does not have it."
+            >
                 <option value="true">Has Item</option>
                 <option value="false">Does Not Have Item</option>
             </StyleSelect>
@@ -187,7 +249,12 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
             title={initialCondition ? 'Edit Condition' : 'Add Condition'}
         >
             <div className="space-y-4">
-                 <StyleSelect label="Condition Type" value={conditionType} onChange={e => setConditionType(e.target.value as Condition['type'])}>
+                 <StyleSelect 
+                    label="Condition Type" 
+                    value={conditionType} 
+                    onChange={e => setConditionType(e.target.value as Condition['type'])}
+                    help="Select the fundamental type of check you want to perform on the game state."
+                >
                     <option value="attribute">Check an Attribute</option>
                     {!isFilter && <option value="entity_exists">Check if Entity Exists</option>}
                     {!isFilter && <option value="has_stuff">Check if Entity Has "Stuff"</option>}

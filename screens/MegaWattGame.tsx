@@ -1,63 +1,63 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet, Condition } from '../types';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, Condition, ChoiceOutcomeUpdateEntity } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { ArrowDownTrayIcon } from '../components/icons/ArrowDownTrayIcon';
 import { ArrowUpTrayIcon } from '../components/icons/ArrowUpTrayIcon';
 import { ArrowUturnLeftIcon } from '../components/icons/ArrowUturnLeftIcon';
 import { ArrowUturnRightIcon } from '../components/icons/ArrowUturnRightIcon';
+import { HelpTooltip } from '../components/HelpTooltip';
+import { PlayIcon } from '../components/icons/PlayIcon';
+import { NewspaperIcon } from '../components/icons/NewspaperIcon';
+import { UserCircleIcon } from '../components/icons/UserCircleIcon';
 
 interface ResolvedAttribute {
     definition: AttributeDefinition;
     value: string | number | null;
 }
 
-interface ResolvedStuffItem {
-    name: string;
+interface ResolvedComponent {
+    componentName: string;
     attributes: ResolvedAttribute[];
 }
+
 interface ResolvedEntityAttributes {
-    templateAttributes: ResolvedAttribute[];
-    stuff: {
-        setName: string;
-        items: ResolvedStuffItem[];
-    }[];
+    baseAttributes: ResolvedAttribute[];
+    components: ResolvedComponent[];
 }
 
 const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEntityAttributes => {
     const template = gameData.templates.find(t => t.id === entity.templateId);
     if (!template) {
         debugService.log("MegaWattGame: resolveEntityAttributes failed, template not found", { entityId: entity.id, templateId: entity.templateId });
-        return { templateAttributes: [], stuff: [] };
+        return { baseAttributes: [], components: [] };
     }
 
-    const templateAttributes: ResolvedAttribute[] = template.attributes.map(attrDef => ({
+    // This needs to resolve the full hierarchy (parents) to be complete.
+    // For now, it handles direct attributes and direct components.
+    const baseAttributes: ResolvedAttribute[] = template.attributes.map(attrDef => ({
         definition: attrDef,
         value: entity.attributeValues[attrDef.id] ?? null
     }));
 
-    const stuff: ResolvedEntityAttributes['stuff'] = (template.includedStuff || []).map(included => {
-        const stuffSet = gameData.stuff.find(s => s.id === included.setId);
-        if (!stuffSet) return null;
+    const components: ResolvedComponent[] = (template.includedComponentIds || []).map(componentId => {
+        const componentTemplate = gameData.templates.find(t => t.id === componentId);
+        if (!componentTemplate) return null;
 
-        const items: ResolvedStuffItem[] = included.itemIds.map(itemId => {
-            const item = stuffSet.items.find(i => i.id === itemId);
-            if (!item) return null;
-
-            const attributes: ResolvedAttribute[] = item.attributes.map(attrDef => ({
+        const attributes: ResolvedAttribute[] = componentTemplate.attributes.map(attrDef => {
+            const compositeKey = `${componentId}_${attrDef.id}`;
+            return {
                 definition: attrDef,
-                value: entity.attributeValues[`${item.id}_${attrDef.id}`] ?? null
-            }));
+                value: entity.attributeValues[compositeKey] ?? null
+            };
+        });
 
-            return { name: item.name, attributes };
-        }).filter((i): i is ResolvedStuffItem => i !== null);
+        return { componentName: componentTemplate.name, attributes };
+    }).filter((c): c is ResolvedComponent => c !== null);
 
-        return { setName: stuffSet.name, items };
 
-    }).filter((s): s is { setName: string; items: ResolvedStuffItem[] } => s !== null);
-
-    const resolvedData = { templateAttributes, stuff };
+    const resolvedData = { baseAttributes, components };
     debugService.log("MegaWattGame: Resolved entity attributes", { entityName: entity.name, resolvedData });
     return resolvedData;
 };
@@ -65,7 +65,7 @@ const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEn
 
 interface MegaWattGameProps {
   gameData: GameData;
-  onChoiceMade: (outcome: ChoiceOutcome) => void;
+  onChoiceMade: (outcomes: ChoiceOutcome[]) => void;
   onSaveGame: () => void;
   onLoadGame: (jsonString: string) => void;
   onUndo: () => void;
@@ -73,6 +73,8 @@ interface MegaWattGameProps {
   canUndo: boolean;
   canRedo: boolean;
 }
+
+type MenuSection = 'main' | 'news' | 'load' | 'credits';
 
 const AttributeDisplay: React.FC<{
     resolvedAttribute: ResolvedAttribute,
@@ -85,16 +87,16 @@ const AttributeDisplay: React.FC<{
     let displayValue: React.ReactNode = value;
 
     if (definition.type === 'entity_reference' && typeof value === 'string') {
-        displayValue = entityMap.get(value)?.name || <span className="text-gray-500 italic">Unknown Reference</span>;
+        displayValue = entityMap.get(value)?.name || <span className="text-[var(--text-tertiary)] italic">Unknown Reference</span>;
     } else if (typeof value === 'string' && value.length > 150) {
-            displayValue = <p className="text-gray-400 whitespace-pre-wrap">{value}</p>;
+            displayValue = <p className="text-[var(--text-secondary)] whitespace-pre-wrap">{value}</p>;
     } else {
-            displayValue = <span className="text-gray-200">{String(value)}</span>
+            displayValue = <span className="text-[var(--text-primary)]">{String(value)}</span>
     }
 
     return (
         <div className="grid grid-cols-3 gap-2">
-            <span className="text-gray-500 font-semibold col-span-1">{definition.name}</span>
+            <span className="text-[var(--text-tertiary)] font-semibold col-span-1">{definition.name}</span>
             <div className="col-span-2">{displayValue}</div>
         </div>
     );
@@ -112,11 +114,11 @@ const EntityCard: React.FC<{
         const s = entity.styles || {};
         const hasBgImage = !!entity.imageBase64;
         return {
-            borderColor: s.borderColor ? `border-${s.borderColor}` : 'border-gray-700',
+            borderColor: s.borderColor ? `border-${s.borderColor}` : 'border-[var(--border-primary)]',
             borderWidth: { none: 'border-0', sm: 'border', md: 'border-2', lg: 'border-4' }[s.borderWidth || 'md'],
             shadow: { none: 'shadow-none', sm: 'shadow-sm', md: 'shadow-md', lg: 'shadow-lg', xl: 'shadow-xl' }[s.shadow || 'lg'],
-            titleColor: s.titleColor || 'text-cyan-300',
-            backgroundColor: s.backgroundColor || 'bg-gray-800/50',
+            titleColor: s.titleColor || 'text-[var(--text-accent)]',
+            backgroundColor: s.backgroundColor || 'bg-[var(--bg-panel)]/50',
             overlay: { none: '', light: 'bg-black/20', medium: 'bg-black/50', heavy: 'bg-black/70' }[s.backgroundOverlayStrength || (hasBgImage ? 'medium' : 'none')],
         };
     }, [entity.styles, entity.imageBase64]);
@@ -132,23 +134,16 @@ const EntityCard: React.FC<{
             <div className="relative z-10 p-6 flex flex-col flex-grow">
                 <h3 className={`text-xl font-bold ${styles.titleColor} mb-4`}>{entity.name}</h3>
                 <div className="space-y-3 text-sm flex-grow">
-                    {resolvedAttributes.templateAttributes.map(resAttr => (
+                    {resolvedAttributes.baseAttributes.map(resAttr => (
                         <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
                     ))}
 
-                    {resolvedAttributes.stuff.map(stuffGroup => (
-                        <div key={stuffGroup.setName} className="pt-3 mt-3 border-t border-gray-700/50">
-                            <h4 className="text-teal-400 font-semibold text-base mb-2">{stuffGroup.setName}</h4>
+                    {resolvedAttributes.components.map(component => (
+                        <div key={component.componentName} className="pt-3 mt-3 border-t border-[var(--border-primary)]/50">
+                            <h4 className="text-[var(--text-teal)] font-semibold text-base mb-2">{component.componentName}</h4>
                             <div className="space-y-3 pl-2">
-                                {stuffGroup.items.map(item => (
-                                    <div key={item.name}>
-                                        <p className="text-gray-300 font-bold mb-1">{item.name}</p>
-                                        <div className="space-y-2 pl-2 border-l border-gray-600">
-                                          {item.attributes.map(resAttr => (
-                                              <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
-                                          ))}
-                                        </div>
-                                    </div>
+                                {component.attributes.map(resAttr => (
+                                    <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
                                 ))}
                             </div>
                         </div>
@@ -175,127 +170,11 @@ const parsePlaceholders = (text: string | undefined, entity: Entity, template: T
     return processedText;
 }
 
-const SelectableCard: React.FC<{ card: Omit<StoryCard, 'id'>, onClick: () => void }> = ({ card, onClick }) => {
+const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onComplete: (option?: ChoiceOption) => void; animationState: 'in' | 'out'; isFirstScene: boolean }> = ({ choice, gameData, onComplete, animationState, isFirstScene }) => {
     const styles = useMemo(() => {
-        const s = card.styles || {};
-        return {
-            textColor: s.textColor || 'text-white',
-            fontFamily: s.fontFamily || 'sans',
-            fontSize: { normal: 'text-base', large: 'text-lg', xlarge: 'text-xl', xxlarge: 'text-2xl' }[s.fontSize || 'normal'],
-            textAlign: { left: 'text-left', center: 'text-center', right: 'text-right' }[s.textAlign || 'center'],
-            borderWidth: { none: 'border-0', sm: 'border', md: 'border-2', lg: 'border-4' }[s.borderWidth || 'md'],
-            borderColor: `border-${s.borderColor || 'cyan-500'}`
-        };
-    }, [card.styles]);
-    
-    return (
-        <button onClick={onClick} className={`relative aspect-[3/4] w-full rounded-lg overflow-hidden group transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/30 ${styles.borderWidth} ${styles.borderColor}`}>
-            {card.imageBase64 && <img src={card.imageBase64} alt={card.description} className="absolute inset-0 w-full h-full object-cover group-hover:brightness-110 transition-all duration-300"/>}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
-            <div className="relative z-10 flex flex-col justify-end h-full p-4">
-                <p className={`font-bold ${styles.textColor} ${styles.fontFamily} ${styles.fontSize} ${styles.textAlign}`}>
-                    {card.description}
-                </p>
-            </div>
-        </button>
-    );
-};
-
-
-const ChoicePresenter: React.FC<{
-    choice: PlayerChoice;
-    gameData: GameData;
-    onComplete: (outcome: ChoiceOutcome) => void;
-}> = ({ choice, gameData, onComplete }) => {
-    
-    const promptFontSizeClass = {
-        normal: 'text-xl',
-        large: 'text-2xl',
-        xlarge: 'text-3xl',
-        xxlarge: 'text-4xl',
-    }[choice.styles?.promptStyles?.fontSize || 'normal'];
-
-    const promptTextColorClass = choice.styles?.promptStyles?.textColor || 'text-cyan-200';
-
-    const choiceOptions = useMemo((): { card: Omit<StoryCard, 'id' | 'choiceId'>, outcome: ChoiceOutcome }[] => {
-        debugService.log("ChoicePresenter: Calculating choice options", { choice });
-        
-        if (choice.choiceType === 'static') {
-            const options = choice.staticOptions || [];
-            const finalOptions = options.filter(opt => {
-                if (!opt.conditions || opt.conditions.length === 0) {
-                    debugService.log("ChoicePresenter: Static option included (no conditions)", { optionId: opt.id });
-                    return true;
-                }
-                const allConditionsMet = opt.conditions.every(cond => evaluateCondition(cond, gameData));
-                debugService.log("ChoicePresenter: Static option evaluated", { optionId: opt.id, allConditionsMet });
-                return allConditionsMet;
-            });
-            debugService.log("ChoicePresenter: Final static options", { options: finalOptions });
-            return finalOptions;
-        }
-        
-        if (choice.choiceType === 'dynamic_from_template' && choice.dynamicConfig) {
-            const { sourceTemplateId, cardTemplate, outcomeTemplate, filterConditions } = choice.dynamicConfig;
-            const sourceTemplate = gameData.templates.find(t => t.id === sourceTemplateId);
-            if (!sourceTemplate) {
-                 debugService.log("ChoicePresenter: Dynamic choice failed, source template not found", { sourceTemplateId });
-                return [];
-            }
-            
-            let sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
-            debugService.log("ChoicePresenter: Found initial dynamic entities", { count: sourceEntities.length, entities: sourceEntities.map(e => e.name) });
-
-            if (filterConditions && filterConditions.length > 0) {
-                sourceEntities = sourceEntities.filter(entity => {
-                    return filterConditions.every(cond => {
-                         if (cond.type === 'attribute') {
-                            const conditionForEntity: Condition = { ...cond, targetEntityId: entity.id };
-                            return evaluateCondition(conditionForEntity, gameData);
-                         }
-                        return evaluateCondition(cond, gameData);
-                    })
-                });
-                debugService.log("ChoicePresenter: Entities after filtering", { count: sourceEntities.length, entities: sourceEntities.map(e => e.name) });
-            }
-
-            const finalOptions = sourceEntities.map(entity => {
-                const parsedCard: Omit<StoryCard, 'id' | 'choiceId'> = {
-                    ...cardTemplate,
-                    description: parsePlaceholders(cardTemplate.description, entity, sourceTemplate),
-                    imagePrompt: parsePlaceholders(cardTemplate.imagePrompt, entity, sourceTemplate),
-                };
-
-                const outcome: ChoiceOutcome = {
-                    ...outcomeTemplate,
-                    value: entity.id
-                };
-                return { card: parsedCard, outcome };
-            });
-            debugService.log("ChoicePresenter: Final dynamic options", { options: finalOptions });
-            return finalOptions;
-        }
-
-        return [];
-    }, [choice, gameData]);
-    
-    return (
-        <div className="space-y-8">
-            <p className={`text-center transition-colors duration-300 ${promptFontSizeClass} ${promptTextColorClass}`}>{choice.prompt}</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
-                {choiceOptions.map((option, index) => (
-                    <SelectableCard key={index} card={option.card} onClick={() => onComplete(option.outcome)} />
-                ))}
-            </div>
-        </div>
-    );
-};
-
-
-const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: GameData; onComplete: (outcome?: ChoiceOutcome) => void; animationState: 'in' | 'out'; isFirstCard: boolean }> = ({ card, choice, gameData, onComplete, animationState, isFirstCard }) => {
-    const styles = useMemo(() => {
-        const s = card.styles || {};
+        const s = choice.styles || {};
         const fgs = s.foregroundImageStyles || {};
+        const ps = s.promptStyles || {};
         return {
             textPosition: s.textPosition || 'bottom',
             textAlign: s.textAlign || 'center',
@@ -307,11 +186,15 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
             fontSize: s.fontSize || 'normal',
             textWidth: s.textWidth || 'medium',
             backgroundEffect: s.backgroundEffect || 'none',
-            cardTransition: isFirstCard ? 'fade' : (s.cardTransition || 'fade'),
+            cardTransition: isFirstScene ? 'fade' : (s.cardTransition || 'fade'),
             cardTransitionDuration: s.cardTransitionDuration || 0.6,
             textAnimation: s.textAnimation || 'fade-in',
             textAnimationDuration: s.textAnimationDuration || 1,
             textAnimationDelay: s.textAnimationDelay || 0.5,
+            prompt: {
+                fontSize: ps.fontSize || 'normal',
+                textColor: ps.textColor || 'text-cyan-200',
+            },
             fg: {
                 position: fgs.position || 'center',
                 size: fgs.size || 'medium',
@@ -320,37 +203,83 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
                 animationDelay: fgs.animationDelay || 1,
             }
         };
-    }, [card.styles, isFirstCard]);
+    }, [choice.styles, isFirstScene]);
+
+    const choiceOptions = useMemo((): ChoiceOption[] => {
+        if (!choice.prompt) return []; // No options if it's a linear scene
+
+        debugService.log("ScenePresenter: Calculating choice options", { choice });
+        
+        if (choice.choiceType === 'static') {
+            const options = choice.staticOptions || [];
+            const finalOptions = options.filter(opt => {
+                if (!opt.conditions || opt.conditions.length === 0) return true;
+                return opt.conditions.every(cond => evaluateCondition(cond, gameData));
+            });
+            debugService.log("ScenePresenter: Final static options", { options: finalOptions });
+            return finalOptions;
+        }
+        
+        if (choice.choiceType === 'dynamic_from_template' && choice.dynamicConfig) {
+            const { sourceTemplateId, optionTemplate, outcomeTemplates, nextChoiceId, filterConditions } = choice.dynamicConfig;
+            const sourceTemplate = gameData.templates.find(t => t.id === sourceTemplateId);
+            if (!sourceTemplate) return [];
+            
+            let sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
+
+            if (filterConditions && filterConditions.length > 0) {
+                sourceEntities = sourceEntities.filter(entity => {
+                    return filterConditions.every(cond => {
+                         if (cond.type === 'attribute') {
+                            const conditionForEntity: Condition = { ...cond, targetEntityId: entity.id };
+                            return evaluateCondition(conditionForEntity, gameData);
+                         }
+                        return evaluateCondition(cond, gameData);
+                    })
+                });
+            }
+
+            const finalOptions: ChoiceOption[] = sourceEntities.map((entity, index) => ({
+                id: `dynamic_opt_${entity.id}_${index}`,
+                text: parsePlaceholders(optionTemplate.text, entity, sourceTemplate),
+                outcomes: outcomeTemplates, // Pass outcomes with placeholders
+                nextChoiceId: nextChoiceId || null,
+                sourceEntityId: entity.id, // Store the source entity ID
+            }));
+            debugService.log("ScenePresenter: Final dynamic options", { options: finalOptions });
+            return finalOptions;
+        }
+        return [];
+    }, [choice, gameData]);
 
     // CSS Classes
     const positionClass = { top: 'justify-start pt-12 md:pt-24', middle: 'justify-center', bottom: 'justify-end pb-12 md:pb-24' }[styles.textPosition];
     const textAlignClass = { left: 'text-left items-start', center: 'text-center items-center', right: 'text-right items-end' }[styles.textAlign];
-    const textColorClass = styles.textColor;
-    const textShadowClass = '[text-shadow:0_2px_10px_rgba(0,0,0,0.5)]';
     const overlayClass = { none: '', light: 'bg-gradient-to-t from-black/40 via-black/20 to-transparent', medium: 'bg-gradient-to-t from-black/80 via-black/50 to-transparent', heavy: 'bg-gradient-to-t from-black/95 via-black/70 to-black/20' }[styles.overlayStrength];
     const backgroundEffectClass = { none: '', blur: 'blur-md', darken: 'brightness-75' }[styles.backgroundEffect];
     const fontFamilyClass = { sans: 'font-sans', serif: 'font-serif', mono: 'font-mono' }[styles.fontFamily];
     const fontSizeClass = { normal: 'text-xl md:text-3xl lg:text-4xl', large: 'text-2xl md:text-4xl lg:text-5xl', xlarge: 'text-3xl md:text-5xl lg:text-6xl', xxlarge: 'text-4xl md:text-6xl lg:text-7xl' }[styles.fontSize];
     const textWidthClass = { narrow: 'max-w-2xl', medium: 'max-w-4xl', wide: 'max-w-7xl' }[styles.textWidth];
+    const promptFontSizeClass = { normal: 'text-xl', large: 'text-2xl', xlarge: 'text-3xl', xxlarge: 'text-4xl' }[styles.prompt.fontSize];
     
     // Foreground Image Classes
     const fgContainerPositionClass = { left: 'justify-start', center: 'justify-center', right: 'justify-end'}[styles.fg.position];
     const fgSizeClass = { small: 'w-1/4 md:w-1/5', medium: 'w-1/3 md:w-1/4', large: 'w-1/2 md:w-1/3'}[styles.fg.size];
 
     // Animation Classes & Styles
-    const cardTransitionClass = `card-transition-${styles.cardTransition}-${animationState}`;
+    const sceneTransitionClass = `card-transition-${styles.cardTransition}-${animationState}`;
     const textAnimationClass = animationState === 'in' ? `text-anim-${styles.textAnimation}` : 'opacity-0';
     const fgAnimationClass = animationState === 'in' ? `anim-fg-${styles.fg.animation}` : 'opacity-0';
 
-    const cardStyle = { animationDuration: `${styles.cardTransitionDuration}s` };
-    const bgStyle = { backgroundImage: card.imageBase64 ? `url(${card.imageBase64})` : undefined, animationDuration: `${styles.backgroundAnimationDuration}s`};
+    const sceneStyle = { animationDuration: `${styles.cardTransitionDuration}s` };
+    const bgStyle = { backgroundImage: choice.imageBase64 ? `url(${choice.imageBase64})` : undefined, animationDuration: `${styles.backgroundAnimationDuration}s`};
     const textStyle = { animationDuration: `${styles.textAnimationDuration}s`, animationDelay: `${styles.textAnimationDelay}s` };
     const fgStyle = { animationDuration: `${styles.fg.animationDuration}s`, animationDelay: `${styles.fg.animationDelay}s` };
 
 
     return (
-        <div className={`fixed inset-0 bg-black ${cardTransitionClass}`} style={cardStyle}>
-            {card.imageBase64 && (
+        <div className={`fixed inset-0 bg-black ${sceneTransitionClass}`} style={sceneStyle}>
+            {choice.imageBase64 && (
                 <div
                     className={`absolute inset-0 bg-cover bg-center ${styles.backgroundAnimation !== 'none' ? `anim-bg-${styles.backgroundAnimation}` : ''} ${backgroundEffectClass} transition-all duration-300`}
                     style={bgStyle}
@@ -358,19 +287,32 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
             )}
             <div className={`absolute inset-0 ${overlayClass}`} />
 
-            {card.foregroundImageBase64 && (
+            {choice.foregroundImageBase64 && (
                  <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}>
-                    <img src={card.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full ${fgSizeClass} ${fgAnimationClass}`} alt="Foreground Element"/>
+                    <img src={choice.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full ${fgSizeClass} ${fgAnimationClass}`} alt="Foreground Element"/>
                 </div>
             )}
 
             <div className={`relative z-10 flex flex-col h-full p-8 md:p-16 ${positionClass} ${textAlignClass}`}>
                 <div className={`w-full ${textWidthClass}`}>
-                    <p style={textStyle} className={`leading-relaxed mb-12 ${textColorClass} ${textShadowClass} ${fontFamilyClass} ${fontSizeClass} ${textAnimationClass}`}>
-                        {card.description}
+                    <p style={textStyle} className={`leading-relaxed mb-12 ${styles.textColor} [text-shadow:0_2px_10px_rgba(0,0,0,0.5)] ${fontFamilyClass} ${fontSizeClass} ${textAnimationClass}`}>
+                        {choice.description}
                     </p>
-                    {choice ? (
-                        <ChoicePresenter choice={choice} gameData={gameData} onComplete={onComplete as (outcome: ChoiceOutcome) => void} />
+                    {choice.prompt ? (
+                        <div className="space-y-6">
+                            <p className={`transition-colors duration-300 ${promptFontSizeClass} ${styles.prompt.textColor}`}>{choice.prompt}</p>
+                            <div className="flex justify-center flex-wrap gap-4">
+                                {choiceOptions.map((option) => (
+                                    <button
+                                        key={option.id}
+                                        onClick={() => onComplete(option)}
+                                        className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105"
+                                    >
+                                        {option.text}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     ) : (
                         <button
                             onClick={() => onComplete()}
@@ -387,35 +329,76 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
 
 
 export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMade, onSaveGame, onLoadGame, onUndo, onRedo, canUndo, canRedo }) => {
-    const { story, choices } = gameData;
-    const [introStep, setIntroStep] = useState(story && story.length > 0 ? 0 : -1);
+    const { choices, startChoiceId } = gameData;
+    const [currentChoiceId, setCurrentChoiceId] = useState<string | null>(null);
     const [animationState, setAnimationState] = useState<'in' | 'out'>('in');
+    const [view, setView] = useState<'menu' | 'game'>('menu');
+    const [activeMenu, setActiveMenu] = useState<MenuSection>('main');
     const loadInputRef = useRef<HTMLInputElement>(null);
-    
+    const isInitialRender = useRef(true);
+
     useEffect(() => {
         debugService.log("MegaWattGame: Component mounted", { gameData });
-    }, []);
+        setCurrentChoiceId(gameData.startChoiceId);
+    }, [gameData.startChoiceId]);
 
     useEffect(() => {
-        debugService.log("MegaWattGame: Intro step changed", { introStep, animationState });
-    }, [introStep, animationState]);
+        // When gameData changes from an undo/redo/load, reset the story to the start
+        if (!isInitialRender.current) {
+            debugService.log("MegaWattGame: GameData changed, resetting story flow.", { newStartChoiceId: gameData.startChoiceId });
+            setCurrentChoiceId(gameData.startChoiceId);
+            setAnimationState('in');
+            setView('menu');
+            setActiveMenu('main');
+        } else {
+            isInitialRender.current = false;
+        }
+    }, [gameData]);
 
-    const handleIntroCompletion = (outcome?: ChoiceOutcome) => {
-        debugService.log("MegaWattGame: Intro card completed", { introStep, outcome });
-        if (outcome) {
-            onChoiceMade(outcome);
+    useEffect(() => {
+        debugService.log("MegaWattGame: Scene state changed", { currentChoiceId, animationState });
+    }, [currentChoiceId, animationState]);
+
+    const handleSceneCompletion = (option?: ChoiceOption) => {
+        debugService.log("MegaWattGame: Scene completion triggered", { currentChoiceId, option });
+        const currentChoice = choices.find(c => c.id === currentChoiceId);
+        if (!currentChoice) return;
+
+        if (option) {
+            let resolvedOutcomes = option.outcomes;
+            // If this was a dynamic choice, resolve its placeholder outcomes
+            if (option.sourceEntityId) {
+                debugService.log("MegaWattGame: Resolving outcomes for dynamic choice", { option });
+                resolvedOutcomes = option.outcomes.map(outcome => {
+                    if (outcome.type === 'update_entity') {
+                        const newOutcome: ChoiceOutcomeUpdateEntity = {...outcome};
+                        if (newOutcome.targetEntityId === '<chosen_entity>') {
+                            newOutcome.targetEntityId = option.sourceEntityId!;
+                        }
+                        if (newOutcome.value === '<chosen_entity_id>') {
+                            newOutcome.value = option.sourceEntityId!;
+                        }
+                        return newOutcome;
+                    }
+                    // Can add resolution for other outcome types here if needed
+                    return outcome;
+                });
+                debugService.log("MegaWattGame: Outcomes resolved", { resolvedOutcomes });
+            }
+            onChoiceMade(resolvedOutcomes);
         }
         
-        const transitionDuration = story[introStep]?.styles?.cardTransitionDuration || 0.6;
+        const transitionDuration = currentChoice.styles?.cardTransitionDuration || 0.6;
         setAnimationState('out');
+        
         setTimeout(() => {
-            const nextStep = introStep + 1;
-            if (nextStep < story.length) {
-                setIntroStep(nextStep);
+            const nextChoiceId = option ? option.nextChoiceId : currentChoice.nextChoiceId;
+            if (nextChoiceId && choices.find(c => c.id === nextChoiceId)) {
+                setCurrentChoiceId(nextChoiceId);
                 setAnimationState('in');
             } else {
-                setIntroStep(-1); // End of intro
-                debugService.log("MegaWattGame: Intro sequence finished.");
+                setCurrentChoiceId(null); // End of this story branch
+                debugService.log("MegaWattGame: Story branch finished.");
             }
         }, transitionDuration * 1000 + 100); // Must be slightly longer than CSS animation duration
     };
@@ -437,7 +420,6 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
         };
         reader.readAsText(file);
 
-        // Reset file input value to allow loading the same file again
         if(event.target) {
             event.target.value = '';
         }
@@ -457,37 +439,135 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
         });
         return grouped;
     }, [gameData.entities]);
+    
+    const currentChoice = useMemo(() => choices.find(c => c.id === currentChoiceId), [choices, currentChoiceId]);
 
-    if (introStep !== -1) {
-        const currentCard = story[introStep];
-        if (!currentCard) return null; // Should not happen
+    if (view === 'menu') {
+        const { menuSettings } = gameData;
 
-        const choiceForCard = currentCard.choiceId ? choices.find(c => c.id === currentCard.choiceId) : undefined;
+        const MenuButton: React.FC<{ section: MenuSection; icon: React.ReactNode; label: string; }> = ({ section, icon, label }) => (
+            <button
+                onClick={() => setActiveMenu(section)}
+                className={`flex items-center gap-3 w-full p-3 text-left rounded-md transition-colors text-[length:var(--font-size-sm)] ${activeMenu === section ? 'bg-[var(--text-accent)]/20 text-[var(--text-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}
+            >
+                {icon}
+                <span>{label}</span>
+            </button>
+        );
 
-        return <IntroCard card={currentCard} choice={choiceForCard} onComplete={handleIntroCompletion} animationState={animationState} isFirstCard={introStep === 0} gameData={gameData} />;
+        return (
+            <div className="relative min-h-screen bg-black text-white flex">
+                {menuSettings.backgroundImageBase64 && (
+                     <div
+                        className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle"
+                        style={{ backgroundImage: `url(${menuSettings.backgroundImageBase64})`, animationDuration: '45s' }}
+                    />
+                )}
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                
+                <aside className="relative z-10 w-64 bg-[var(--bg-panel)]/30 p-4 flex flex-col space-y-2 border-r border-[var(--border-primary)]/50">
+                    <h1 className="text-2xl font-bold text-[var(--text-accent-bright)] tracking-wider px-2 py-4 text-center">
+                        {gameData.colonyName || "The Colony"}
+                    </h1>
+                    <MenuButton section="main" icon={<PlayIcon className="w-5 h-5" />} label="Play" />
+                    <MenuButton section="news" icon={<NewspaperIcon className="w-5 h-5" />} label="News & Updates" />
+                    <MenuButton section="load" icon={<ArrowUpTrayIcon className="w-5 h-5" />} label="Load Game" />
+                    <MenuButton section="credits" icon={<UserCircleIcon className="w-5 h-5" />} label="Credits" />
+                </aside>
+
+                <main className="relative z-10 flex-1 p-8 overflow-y-auto">
+                    {activeMenu === 'main' && (
+                         <div className="text-center max-w-4xl mx-auto flex flex-col items-center h-full justify-center">
+                            <div className="flex flex-wrap justify-center gap-2 mb-6">
+                                {menuSettings.tags.map(tag => (
+                                    <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-accent)] text-sm font-medium px-3 py-1 rounded-full">{tag}</span>
+                                ))}
+                            </div>
+                            <p className="text-lg text-gray-200 leading-relaxed my-4 whitespace-pre-wrap">
+                                {menuSettings.description}
+                            </p>
+                            <button 
+                                onClick={() => setView('game')}
+                                className="mt-8 bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-4 px-16 rounded-full transition-all duration-300 transform hover:scale-105 text-xl tracking-wider shadow-lg shadow-cyan-500/20"
+                            >
+                                Start Simulation
+                            </button>
+                        </div>
+                    )}
+                    {activeMenu === 'news' && (
+                        <div>
+                            <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">News & Updates</h2>
+                            <div className="space-y-6 max-w-3xl">
+                                {menuSettings.news.length > 0 ? [...menuSettings.news].reverse().map(item => (
+                                    <div key={item.id} className="bg-[var(--bg-panel)]/50 p-6 rounded-lg">
+                                        <p className="text-[var(--text-secondary)] text-sm mb-1">{item.date}</p>
+                                        <h3 className="text-2xl font-semibold text-[var(--text-accent)] mb-2">{item.title}</h3>
+                                        <p className="text-gray-300 whitespace-pre-wrap">{item.content}</p>
+                                    </div>
+                                )) : <p className="text-[var(--text-secondary)]">No news items have been posted.</p>}
+                            </div>
+                        </div>
+                    )}
+                    {activeMenu === 'load' && (
+                         <div>
+                            <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">Load Game</h2>
+                            <div className="max-w-md">
+                                <p className="text-[var(--text-secondary)] mb-4">Load a previously saved game file to continue your progress.</p>
+                                <button onClick={handleLoadClick} className="flex items-center justify-center gap-2 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-3 px-6 rounded-md transition duration-300">
+                                    <ArrowUpTrayIcon className="w-5 h-5" />
+                                    Select Save File...
+                                </button>
+                                <input type="file" accept=".json" ref={loadInputRef} onChange={handleFileChange} className="hidden" />
+                            </div>
+                        </div>
+                    )}
+                    {activeMenu === 'credits' && (
+                        <div>
+                            <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">Credits</h2>
+                            <div className="max-w-3xl bg-[var(--bg-panel)]/50 p-6 rounded-lg">
+                                <p className="text-gray-300 whitespace-pre-wrap">{menuSettings.credits}</p>
+                            </div>
+                        </div>
+                    )}
+                </main>
+            </div>
+        );
     }
 
+    if (currentChoiceId && currentChoice) {
+        return <ScenePresenter choice={currentChoice} onComplete={handleSceneCompletion} animationState={animationState} isFirstScene={currentChoiceId === startChoiceId} gameData={gameData} />;
+    }
+
+    // This is the main game view when no story scene is active
     return (
-        <div className="min-h-screen bg-gray-900 bg-grid-cyan-500/10 p-4 sm:p-6 lg:p-8">
+        <div className="min-h-screen bg-[var(--bg-main)] bg-grid p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto">
                 <header className="relative text-center mb-12">
-                    <h1 className="text-5xl font-extrabold text-white tracking-wider">
-                        Welcome to <span className="text-cyan-400">{gameData.colonyName || "The Colony"}</span>
-                    </h1>
-                    <p className="text-gray-400 mt-2">An interactive colony simulation.</p>
+                     <div className="flex items-center justify-center gap-2">
+                        <h1 className="text-5xl font-extrabold text-[var(--text-primary)] tracking-wider">
+                            Welcome to <span className="text-[var(--text-accent-bright)]">{gameData.colonyName || "The Colony"}</span>
+                        </h1>
+                        <div className="pt-2">
+                            <HelpTooltip 
+                                title={`About ${gameData.colonyName || "The Colony"}`} 
+                                content="This is the main view of your colony's current state. The cards below represent all the people, places, and active systems in your simulation.\n\nYour choices during gameplay scenes can create new cards or change the values on existing ones." 
+                            />
+                        </div>
+                    </div>
+                    <p className="text-[var(--text-secondary)] mt-2">An interactive colony simulation.</p>
 
                     <div className="absolute top-0 right-0 flex flex-col sm:flex-row gap-2">
-                        <button onClick={onUndo} disabled={!canUndo} className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed" title="Undo Last Choice">
+                        <button onClick={onUndo} disabled={!canUndo} className="flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-[var(--text-tertiary)] disabled:bg-[var(--bg-panel)] disabled:cursor-not-allowed" title="Undo Last Choice">
                             <ArrowUturnLeftIcon className="w-4 h-4" />
                             <span className="hidden sm:inline">Undo</span>
                         </button>
-                        <button onClick={onRedo} disabled={!canRedo} className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed" title="Redo Last Choice">
+                        <button onClick={onRedo} disabled={!canRedo} className="flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-[var(--text-tertiary)] disabled:bg-[var(--bg-panel)] disabled:cursor-not-allowed" title="Redo Last Choice">
                             <ArrowUturnRightIcon className="w-4 h-4" />
                             <span className="hidden sm:inline">Redo</span>
                         </button>
                         <button 
                             onClick={onSaveGame} 
-                            className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
+                            className="flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
                             title="Save Game Progress"
                         >
                             <ArrowDownTrayIcon className="w-4 h-4" />
@@ -495,7 +575,7 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                         </button>
                         <button 
                             onClick={handleLoadClick} 
-                            className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
+                            className="flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
                             title="Load Game Progress"
                         >
                             <ArrowUpTrayIcon className="w-4 h-4" />
@@ -506,13 +586,13 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                 </header>
                 
                 <main className="space-y-12">
-                    {gameData.templates.map(template => {
+                    {gameData.templates.filter(t => !t.isComponent).map(template => {
                         const templateEntities = entitiesByTemplate.get(template.id) || [];
                         if (templateEntities.length === 0) return null;
                         
                         return (
                             <section key={template.id}>
-                                <h2 className="text-3xl font-bold text-teal-300 border-b-2 border-teal-500/30 pb-2 mb-6">{template.name}s</h2>
+                                <h2 className="text-3xl font-bold text-[var(--text-teal)] border-b-2 border-[var(--text-teal)]/30 pb-2 mb-6">{template.name}s</h2>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {templateEntities.map(entity => (
                                         <EntityCard key={entity.id} entity={entity} gameData={gameData} entityMap={entityMap} />
@@ -523,8 +603,8 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                     })}
 
                     {gameData.entities.length === 0 && (
-                         <div className="text-center py-20 bg-gray-800/30 rounded-lg">
-                            <p className="text-gray-500 text-lg">No entities have been defined for this colony yet.</p>
+                         <div className="text-center py-20 bg-[var(--bg-panel)]/30 rounded-lg">
+                            <p className="text-[var(--text-tertiary)] text-lg">No entities have been defined for this colony yet.</p>
                         </div>
                     )}
                 </main>
@@ -537,8 +617,8 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
 // Helper style to add a subtle grid background and animations
 const style = document.createElement('style');
 style.innerHTML = `
-.bg-grid-cyan-500\\/10 {
-  background-image: linear-gradient(rgba(45, 212, 191, 0.05) 1px, transparent 1px), linear-gradient(to right, rgba(45, 212, 191, 0.05) 1px, transparent 1px);
+.bg-grid {
+  background-image: linear-gradient(var(--grid-bg-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-bg-color) 1px, transparent 1px);
   background-size: 2rem 2rem;
 }
 

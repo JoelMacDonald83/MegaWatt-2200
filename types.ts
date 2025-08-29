@@ -1,11 +1,10 @@
 
-
 export type ConditionOperator = '==' | '!=' | '>' | '<' | '>=' | '<=';
 
 export interface AttributeCondition {
   type: 'attribute';
   targetEntityId: string; // ID of the entity to check
-  attributeId: string; // Can be a base attribute or a composite stuff attribute ID
+  attributeId: string; // Can be a base attribute or a composite component attribute ID
   operator: ConditionOperator;
   value: string | number | null;
 }
@@ -33,34 +32,15 @@ export interface AttributeDefinition {
   referencedTemplateId?: string | null;
 }
 
-export interface StuffItem {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  attributes: AttributeDefinition[];
-}
-
-export interface StuffSet {
-  id: string;
-  name: string;
-  description: string;
-  items: StuffItem[];
-}
-
-export interface IncludedStuff {
-  setId: string; // ID of the StuffSet
-  itemIds: string[]; // Array of StuffItem IDs included from that set
-}
-
 export interface Template {
   id: string;
   name: string;
   description: string;
   tags: string[];
   attributes: AttributeDefinition[];
-  includedStuff?: IncludedStuff[];
   parentId?: string;
+  isComponent: boolean; // If true, this is a reusable component, not an entity blueprint.
+  includedComponentIds?: string[]; // Array of Template IDs where isComponent is true.
 }
 
 export interface Entity {
@@ -68,8 +48,8 @@ export interface Entity {
   templateId: string;
   name: string;
   attributeValues: {
-    // The key is the AttributeDefinition id
-    // The value can be a string, a number, or an entity ID for references
+    // The key is the AttributeDefinition id for base attributes,
+    // or a composite key like `${componentId}_${attributeId}` for component attributes.
     [attributeId: string]: string | number | null;
   };
   imagePrompt?: string;
@@ -95,70 +75,58 @@ export interface ChoiceOutcomeCreateEntity {
 
 export interface ChoiceOutcomeUpdateEntity {
     type: 'update_entity';
+    // Can be a specific entity ID, or '<chosen_entity>' for dynamic choices
     targetEntityId: string;
     attributeId: string;
-    value: string | number | null;
+    // Can be a static value, or '<chosen_entity_id>' for dynamic choices
+    value: string | number | null | '<chosen_entity_id>';
 }
 
 export type ChoiceOutcome = ChoiceOutcomeCreateEntity | ChoiceOutcomeUpdateEntity;
 
 export interface ChoiceOption {
   id: string;
-  card: Omit<StoryCard, 'id' | 'choiceId'>;
-  outcome: ChoiceOutcome;
+  text: string;
+  outcomes: ChoiceOutcome[];
+  nextChoiceId?: string | null;
   conditions?: Condition[];
+  sourceEntityId?: string; // For dynamic choices, the entity this option represents
 }
 
 export interface PlayerChoice {
   id: string;
-  name: string;
-  prompt: string;
-  choiceType: 'static' | 'dynamic_from_template';
+  name: string; // Editor-facing name
 
-  // Used if choiceType is 'static'
-  staticOptions?: ChoiceOption[];
-
-  // Used if choiceType is 'dynamic_from_template'
-  dynamicConfig?: {
-      sourceTemplateId: string;
-      cardTemplate: Omit<StoryCard, 'id' | 'choiceId'>; // Placeholders like {entity.name} will be used here.
-      // The `value` for the outcome will be the chosen entity's ID.
-      outcomeTemplate: Omit<ChoiceOutcomeUpdateEntity, 'value'>; 
-      filterConditions?: Condition[];
-  };
-  
-  styles?: {
-      layout?: 'grid' | 'carousel';
-      promptStyles?: {
-          fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
-          textColor?: string; // e.g., 'text-cyan-200'
-      }
-  }
-}
-
-export interface StoryCard {
-  id: string;
-  description: string;
+  // --- Fields from former StoryCard ---
+  description: string; // The main text for this scene/node
   imagePrompt: string;
   imageBase64?: string; // Can be from AI gen (raw base64) or upload (data URL)
   foregroundImageBase64?: string; // Will be a data URL from upload
-  choiceId?: string; // Links to a PlayerChoice
+
+  // Combined styles from StoryCard and original PlayerChoice
   styles?: {
+    // text styles
     textPosition?: 'top' | 'middle' | 'bottom';
     textAlign?: 'left' | 'center' | 'right';
     textColor?: string; // e.g. 'text-white'
-    overlayStrength?: 'none' | 'light' | 'medium' | 'heavy';
-    backgroundAnimation?: 'none' | 'kenburns-subtle' | 'kenburns-normal' | 'pan-left' | 'pan-right' | 'zoom-out';
-    backgroundAnimationDuration?: number;
     fontFamily?: 'sans' | 'serif' | 'mono';
     fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
     textWidth?: 'narrow' | 'medium' | 'wide';
-    backgroundEffect?: 'none' | 'blur' | 'darken';
-    cardTransition?: 'fade' | 'slide-left' | 'slide-up' | 'zoom-in' | 'dissolve';
-    cardTransitionDuration?: number;
     textAnimation?: 'none' | 'fade-in' | 'rise-up' | 'typewriter';
     textAnimationDuration?: number;
     textAnimationDelay?: number;
+
+    // background styles
+    overlayStrength?: 'none' | 'light' | 'medium' | 'heavy';
+    backgroundAnimation?: 'none' | 'kenburns-subtle' | 'kenburns-normal' | 'pan-left' | 'pan-right' | 'zoom-out';
+    backgroundAnimationDuration?: number;
+    backgroundEffect?: 'none' | 'blur' | 'darken';
+
+    // transition styles
+    cardTransition?: 'fade' | 'slide-left' | 'slide-up' | 'zoom-in' | 'dissolve';
+    cardTransitionDuration?: number;
+
+    // foreground image styles
     foregroundImageStyles?: {
       position?: 'left' | 'center' | 'right';
       size?: 'small' | 'medium' | 'large';
@@ -166,18 +134,62 @@ export interface StoryCard {
       animationDuration?: number;
       animationDelay?: number;
     };
-    // Styles specific to choice cards
-    borderWidth?: 'none' | 'sm' | 'md' | 'lg';
-    borderColor?: string; // e.g., 'cyan-500'
+    
+    // styles for the choice options themselves
+    choiceLayout?: 'grid' | 'carousel'; // Replaces old `layout`
+    promptStyles?: {
+      fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
+      textColor?: string; // e.g., 'text-cyan-200'
+    }
   };
+
+  // --- Logic Fields ---
+  prompt?: string; // Optional prompt. If absent, it's a linear story beat with a "Continue" button.
+  choiceType: 'static' | 'dynamic_from_template';
+  staticOptions?: ChoiceOption[];
+  dynamicConfig?: {
+      sourceTemplateId: string;
+      optionTemplate: {
+          text: string; // Placeholders like {entity.name} will be used here.
+      };
+      outcomeTemplates: ChoiceOutcome[];
+      nextChoiceId?: string | null;
+      filterConditions?: Condition[];
+  };
+  nextChoiceId?: string | null; // If no prompt/options, this is used to continue
 }
 
+export interface NewsItem {
+  id: string;
+  date: string;
+  title: string;
+  content: string;
+}
+
+export interface GameMenuSettings {
+  description: string;
+  tags: string[];
+  backgroundImagePrompt: string;
+  backgroundImageBase64?: string;
+  news: NewsItem[];
+  credits: string;
+}
 
 export interface GameData {
   colonyName: string;
-  story: StoryCard[];
+  startChoiceId: string | null;
   choices: PlayerChoice[];
   templates: Template[];
   entities: Entity[];
-  stuff: StuffSet[];
+  menuSettings: GameMenuSettings;
+}
+
+// --- Editor-specific types ---
+
+export type EditorTheme = 'dark' | 'light' | 'high-contrast';
+export type EditorFontSize = 'small' | 'medium' | 'large';
+
+export interface EditorSettings {
+  theme: EditorTheme;
+  fontSize: EditorFontSize;
 }
