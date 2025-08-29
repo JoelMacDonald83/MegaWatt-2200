@@ -1,9 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
 import type { GameData, ChoiceOutcome } from './types';
 import { debugService } from './services/debugService';
+import { HistoryService } from './services/historyService';
+import { ArrowUturnLeftIcon } from './components/icons/ArrowUturnLeftIcon';
+import { ArrowUturnRightIcon } from './components/icons/ArrowUturnRightIcon';
+
 
 // Define IDs for consistent referencing
 const TEMPLATE_CHARACTER_ID = 'template_char_1';
@@ -287,11 +291,57 @@ const initialGameData: GameData = {
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
-  const [gameData, setGameData] = useState<GameData>(initialGameData);
+  
+  const historyService = useMemo(() => new HistoryService<GameData>(initialGameData), []);
+  
+  const [gameData, setGameData] = useState<GameData>(() => historyService.current()!);
+  const [canUndo, setCanUndo] = useState(historyService.canUndo());
+  const [canRedo, setCanRedo] = useState(historyService.canRedo());
 
   useEffect(() => {
     debugService.log("App: Component mounted", { initialGameData });
-  }, []);
+    
+    const unsubscribe = historyService.subscribe(() => {
+        const currentData = historyService.current();
+        if (currentData) {
+            setGameData(currentData);
+        }
+        setCanUndo(historyService.canUndo());
+        setCanRedo(historyService.canRedo());
+        debugService.log("App: History update received from service", { canUndo: historyService.canUndo(), canRedo: historyService.canRedo() });
+    });
+
+    return unsubscribe;
+  }, [historyService]);
+  
+  const handleUndo = useCallback(() => historyService.undo(), [historyService]);
+  const handleRedo = useCallback(() => historyService.redo(), [historyService]);
+
+  useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+          if ((event.ctrlKey || event.metaKey)) {
+              if (event.key === 'z') {
+                  event.preventDefault();
+                  if (event.shiftKey) {
+                      handleRedo();
+                  } else {
+                      handleUndo();
+                  }
+              } else if (event.key === 'y') {
+                  event.preventDefault();
+                  handleRedo();
+              }
+          }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+      };
+  }, [handleUndo, handleRedo]);
+
+  const commitChange = useCallback((newGameData: GameData) => {
+      historyService.push(newGameData);
+  }, [historyService]);
 
   useEffect(() => {
     debugService.log("App: View mode changed", { viewMode });
@@ -299,50 +349,91 @@ const App: React.FC = () => {
 
   const handleChoiceOutcome = (outcome: ChoiceOutcome) => {
     debugService.log("App: handleChoiceOutcome triggered from game preview", { outcome });
-    setGameData(prevData => {
-      debugService.log("App: gameData state before outcome", { gameData: prevData });
-      let newGameData: GameData;
-      if (outcome.type === 'create_entity') {
-        const newEntity = {
-          id: `entity_${Date.now()}`,
-          templateId: outcome.templateId,
-          name: outcome.name,
-          attributeValues: outcome.attributeValues || {},
-        };
-        newGameData = {
-          ...prevData,
-          entities: [...prevData.entities, newEntity]
-        };
-      } else if (outcome.type === 'update_entity') {
-        newGameData = {
-          ...prevData,
-          entities: prevData.entities.map(entity => {
-            if (entity.id === outcome.targetEntityId) {
-              return {
-                ...entity,
-                attributeValues: {
-                  ...entity.attributeValues,
-                  [outcome.attributeId]: outcome.value,
-                }
-              };
-            }
-            return entity;
-          })
-        };
+    
+    const currentData = historyService.current();
+    if (!currentData) return;
+    
+    debugService.log("App: gameData state before outcome", { gameData: currentData });
+    let newGameData: GameData;
+    if (outcome.type === 'create_entity') {
+      const newEntity = {
+        id: `entity_${Date.now()}`,
+        templateId: outcome.templateId,
+        name: outcome.name,
+        attributeValues: outcome.attributeValues || {},
+      };
+      newGameData = {
+        ...currentData,
+        entities: [...currentData.entities, newEntity]
+      };
+    } else if (outcome.type === 'update_entity') {
+      newGameData = {
+        ...currentData,
+        entities: currentData.entities.map(entity => {
+          if (entity.id === outcome.targetEntityId) {
+            return {
+              ...entity,
+              attributeValues: {
+                ...entity.attributeValues,
+                [outcome.attributeId]: outcome.value,
+              }
+            };
+          }
+          return entity;
+        })
+      };
+    } else {
+      newGameData = currentData;
+    }
+    debugService.log("App: gameData state after outcome", { gameData: newGameData });
+    commitChange(newGameData);
+  };
+
+  const handleSaveGame = () => {
+    debugService.log('App: Saving game', { gameData });
+    const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(gameData, null, 2))}`;
+    const link = document.createElement('a');
+    link.href = jsonString;
+    link.download = `${gameData.colonyName.replace(/\s+/g, '_') || 'megawatt_save'}_${timestamp}.json`;
+    link.click();
+  };
+
+  const handleLoadGame = (jsonString: string) => {
+    try {
+      debugService.log('App: Attempting to load game from string', { length: jsonString.length });
+      const loadedData = JSON.parse(jsonString);
+      // Basic validation to see if it looks like a game data file
+      if (loadedData.colonyName && loadedData.entities && loadedData.templates && loadedData.story) {
+        historyService.clearAndPush(loadedData);
+        debugService.log('App: Game loaded successfully', { loadedData });
+        alert('Game loaded successfully!');
       } else {
-        newGameData = prevData;
+        throw new Error('Invalid or corrupted save file format.');
       }
-      debugService.log("App: gameData state after outcome", { gameData: newGameData });
-      return newGameData;
-    });
+    } catch (error) {
+      console.error("Failed to load game:", error);
+      debugService.log('App: Game load failed', { error });
+      alert(`Failed to load game: ${(error as Error).message}`);
+    }
   };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      <header className="absolute top-0 left-0 right-0 z-10 flex justify-between items-center p-3 bg-gray-950/70 backdrop-blur-sm border-b border-gray-800">
-        <h1 className="text-lg font-bold text-white">
-          <span className="text-cyan-400">MegaWatt 2200</span> / Phoenix Editor
-        </h1>
+      <header className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 bg-gray-950/70 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center gap-4">
+            <h1 className="text-lg font-bold text-white">
+              <span className="text-cyan-400">MegaWatt 2200</span> / Phoenix Editor
+            </h1>
+            <div className="flex items-center space-x-1 bg-gray-800 p-1 rounded-lg">
+                <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 text-gray-300 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Undo (Ctrl+Z)">
+                    <ArrowUturnLeftIcon className="w-5 h-5"/>
+                </button>
+                 <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 text-gray-300 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Redo (Ctrl+Y)">
+                    <ArrowUturnRightIcon className="w-5 h-5"/>
+                </button>
+            </div>
+        </div>
         <div className="flex items-center space-x-2 bg-gray-800 p-1 rounded-lg">
           <button
             onClick={() => setViewMode('editor')}
@@ -360,10 +451,19 @@ const App: React.FC = () => {
       </header>
       <main className="h-full pt-[57px]">
         {viewMode === 'editor' ? (
-          <PhoenixEditor gameData={gameData} setGameData={setGameData} />
+          <PhoenixEditor gameData={gameData} onCommitChange={commitChange} />
         ) : (
           <div className="h-full overflow-y-auto">
-            <MegaWattGame gameData={gameData} onChoiceMade={handleChoiceOutcome} />
+            <MegaWattGame 
+              gameData={gameData} 
+              onChoiceMade={handleChoiceOutcome}
+              onSaveGame={handleSaveGame}
+              onLoadGame={handleLoadGame}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+            />
           </div>
         )}
       </main>

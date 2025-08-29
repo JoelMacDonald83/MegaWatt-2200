@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { GameData, Template, Entity, StoryCard, PlayerChoice, StuffSet } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
@@ -54,7 +53,7 @@ type EditingState =
 
 interface PhoenixEditorProps {
   gameData: GameData;
-  setGameData: React.Dispatch<React.SetStateAction<GameData>>;
+  onCommitChange: (gameData: GameData) => void;
 }
 
 type ImportableKey = keyof typeof VALIDATORS;
@@ -82,14 +81,13 @@ const getDescendantIds = (templateId: string, templates: Template[]): string[] =
     return descendantIds;
 };
 
-export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameData }) => {
+export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommitChange }) => {
   const [activeTab, setActiveTab] = useState<EditorTabs>('world');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
   const [entityFilter, setEntityFilter] = useState<string>('all');
   const [deletionModalState, setDeletionModalState] = useState<DeletionModalState>({ type: 'none' });
   const [editingState, setEditingState] = useState<EditingState>({ mode: 'none' });
-  const [originalItemBeforeEdit, setOriginalItemBeforeEdit] = useState<Template | Entity | StoryCard | PlayerChoice | StuffSet | null>(null);
   const [importLog, setImportLog] = useState<string[]>([]);
   const [toast, setToast] = useState({ show: false, message: '' });
   const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
@@ -122,12 +120,11 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
   const handleColonyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     debugService.log("PhoenixEditor: Colony name changing", { oldName: gameData.colonyName, newName });
-    setGameData(prev => ({ ...prev, colonyName: newName }));
+    onCommitChange({ ...gameData, colonyName: newName });
   };
   
   const handleAddItem = () => {
     debugService.log("PhoenixEditor: handleAddItem called", { activeTab });
-    setOriginalItemBeforeEdit(null); // It's a new item, nothing to revert to
     if (activeTab === 'templates') {
       const newItemId = `template_${Date.now()}`;
       const newTemplate: Template = { id: newItemId, name: 'New Template', description: '', tags: [], attributes: [] };
@@ -162,84 +159,69 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
   const handleDeleteConfirmed = () => {
     debugService.log("PhoenixEditor: Deletion confirmed", { deletionModalState });
+    let newGameData = { ...gameData };
+
     if (deletionModalState.type === 'delete-template') {
         const idsToDelete = [deletionModalState.template.id, ...getDescendantIds(deletionModalState.template.id, gameData.templates)];
         debugService.log("PhoenixEditor: Deleting template(s)", { idsToDelete });
-        setGameData(prev => {
-          const newState = {
-            ...prev,
-            templates: prev.templates.filter(t => !idsToDelete.includes(t.id)),
-            entities: prev.entities.filter(e => !idsToDelete.includes(e.templateId)),
-          };
-          debugService.log("PhoenixEditor: gameData state after template deletion", { oldState: prev, newState });
-          return newState;
-        });
+        newGameData = {
+          ...gameData,
+          templates: gameData.templates.filter(t => !idsToDelete.includes(t.id)),
+          entities: gameData.entities.filter(e => !idsToDelete.includes(e.templateId)),
+        };
         if (selectedItemId && idsToDelete.includes(selectedItemId)) {
           setSelectedItemId(null);
         }
     } else if (deletionModalState.type === 'delete-entity') {
-        setGameData(prev => {
-          const newState = { ...prev, entities: prev.entities.filter(e => e.id !== deletionModalState.entity.id) };
-           debugService.log("PhoenixEditor: gameData state after entity deletion", { oldState: prev, newState });
-          return newState;
-        });
+        newGameData = { ...gameData, entities: gameData.entities.filter(e => e.id !== deletionModalState.entity.id) };
         if (selectedItemId === deletionModalState.entity.id) setSelectedItemId(null);
     } else if (deletionModalState.type === 'delete-story-card') {
-      setGameData(prev => {
-        const newState = { ...prev, story: prev.story.filter(c => c.id !== deletionModalState.card.id) };
-         debugService.log("PhoenixEditor: gameData state after story card deletion", { oldState: prev, newState });
-        return newState;
-      });
-      if (selectedItemId === deletionModalState.card.id) setSelectedItemId(null);
+        newGameData = { ...gameData, story: gameData.story.filter(c => c.id !== deletionModalState.card.id) };
+        if (selectedItemId === deletionModalState.card.id) setSelectedItemId(null);
     } else if (deletionModalState.type === 'delete-choice') {
-      setGameData(prev => {
-        const newState = {
-          ...prev,
-          choices: prev.choices.filter(c => c.id !== deletionModalState.choice.id),
-          story: prev.story.map(card => card.choiceId === deletionModalState.choice.id ? { ...card, choiceId: undefined } : card),
+        newGameData = {
+          ...gameData,
+          choices: gameData.choices.filter(c => c.id !== deletionModalState.choice.id),
+          story: gameData.story.map(card => card.choiceId === deletionModalState.choice.id ? { ...card, choiceId: undefined } : card),
         };
-        debugService.log("PhoenixEditor: gameData state after choice deletion", { oldState: prev, newState });
-        return newState;
-      });
-      if (selectedItemId === deletionModalState.choice.id) setSelectedItemId(null);
+        if (selectedItemId === deletionModalState.choice.id) setSelectedItemId(null);
     } else if (deletionModalState.type === 'delete-stuff-set') {
-       setGameData(prev => {
-         const newState = {
-          ...prev,
-          stuff: prev.stuff.filter(s => s.id !== deletionModalState.stuffSet.id),
-          templates: prev.templates.map(t => ({
+       newGameData = {
+          ...gameData,
+          stuff: gameData.stuff.filter(s => s.id !== deletionModalState.stuffSet.id),
+          templates: gameData.templates.map(t => ({
             ...t,
             includedStuff: (t.includedStuff || []).filter(is => is.setId !== deletionModalState.stuffSet.id),
           }))
         };
-        debugService.log("PhoenixEditor: gameData state after stuff set deletion", { oldState: prev, newState });
-        return newState;
-      });
-      if (selectedItemId === deletionModalState.stuffSet.id) setSelectedItemId(null);
+        if (selectedItemId === deletionModalState.stuffSet.id) setSelectedItemId(null);
     }
+    
+    debugService.log("PhoenixEditor: Committing deletion to history", { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
     setDeletionModalState({ type: 'none' });
   };
 
   const handleSaveTemplate = (templateToSave: Template) => {
     debugService.log('PhoenixEditor: handleSaveTemplate called', { templateToSave, currentEditingState: editingState });
-    setGameData(prev => {
-      const isNew = editingState.mode === 'new-template';
-      const newTemplates = isNew
-        ? [...prev.templates, templateToSave]
-        : prev.templates.map(t => t.id === templateToSave.id ? templateToSave : t);
-      const newGameData = { ...prev, templates: newTemplates };
-      debugService.log(`PhoenixEditor: ${isNew ? 'Added new' : 'Updated'} template.`, { oldGameData: prev, newGameData });
-      return newGameData;
-    });
+    const isNew = editingState.mode === 'new-template';
+    const newTemplates = isNew
+      ? [...gameData.templates, templateToSave]
+      : gameData.templates.map(t => t.id === templateToSave.id ? templateToSave : t);
+    const newGameData = { ...gameData, templates: newTemplates };
+    
+    debugService.log(`PhoenixEditor: Committing ${isNew ? 'new' : 'updated'} template.`, { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
+
     setEditingState({ mode: 'none' });
-    setOriginalItemBeforeEdit(null);
     setSelectedItemId(templateToSave.id);
     showToast('Template saved successfully!');
   }
 
   const handleTemplateChange = (updatedTemplate: Template) => {
     debugService.log('PhoenixEditor: handleTemplateChange called from child editor', { updatedTemplate });
-    // First, update editingState for responsive UI
+    // This function now only updates the local editing state.
+    // The explicit "Save Changes" button is now responsible for committing to the global state.
     setEditingState(prev => {
         if (prev.mode === 'edit-template' || prev.mode === 'new-template') {
             const newState = { ...prev, template: updatedTemplate };
@@ -249,29 +231,18 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
         debugService.log('PhoenixEditor: handleTemplateChange ignored, wrong mode', { currentState: prev });
         return prev;
     });
-
-    // Second, auto-save changes to gameData for existing items
-    if (editingState.mode === 'edit-template') {
-        setGameData(prev => {
-            const newTemplates = prev.templates.map(t => t.id === updatedTemplate.id ? updatedTemplate : t);
-            const newGameData = { ...prev, templates: newTemplates };
-            debugService.log(`PhoenixEditor: Autosaving existing template via handleTemplateChange.`, { oldGameData: prev, newGameData });
-            return newGameData;
-        });
-    }
   };
 
   const handleSaveEntity = (entityToSave: Entity) => {
     debugService.log('PhoenixEditor: handleSaveEntity called', { entityToSave, currentEditingState: editingState });
-    setGameData(prev => {
-       const isNew = editingState.mode === 'new-entity';
-       const newEntities = isNew
-        ? [...prev.entities, entityToSave]
-        : prev.entities.map(e => e.id === entityToSave.id ? entityToSave : e);
-      const newGameData = { ...prev, entities: newEntities };
-      debugService.log(`PhoenixEditor: ${isNew ? 'Added new' : 'Updated'} entity.`, { oldGameData: prev, newGameData });
-      return newGameData;
-    });
+    const isNew = editingState.mode === 'new-entity';
+    const newEntities = isNew
+     ? [...gameData.entities, entityToSave]
+     : gameData.entities.map(e => e.id === entityToSave.id ? entityToSave : e);
+    const newGameData = { ...gameData, entities: newEntities };
+    debugService.log(`PhoenixEditor: Committing ${isNew ? 'new' : 'updated'} entity.`, { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
+
     setEditingState({ mode: 'none' });
     setSelectedItemId(entityToSave.id);
     showToast('Entity saved successfully!');
@@ -279,15 +250,14 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
   const handleSaveStoryCard = (cardToSave: StoryCard) => {
     debugService.log('PhoenixEditor: handleSaveStoryCard called', { cardToSave, currentEditingState: editingState });
-     setGameData(prev => {
-       const isNew = editingState.mode === 'new-story-card';
-       const newStory = isNew
-        ? [...prev.story, cardToSave]
-        : prev.story.map(c => c.id === cardToSave.id ? cardToSave : c);
-      const newGameData = { ...prev, story: newStory };
-      debugService.log(`PhoenixEditor: ${isNew ? 'Added new' : 'Updated'} story card.`, { oldGameData: prev, newGameData });
-      return newGameData;
-    });
+    const isNew = editingState.mode === 'new-story-card';
+    const newStory = isNew
+     ? [...gameData.story, cardToSave]
+     : gameData.story.map(c => c.id === cardToSave.id ? cardToSave : c);
+    const newGameData = { ...gameData, story: newStory };
+    debugService.log(`PhoenixEditor: Committing ${isNew ? 'new' : 'updated'} story card.`, { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
+
     setEditingState({ mode: 'none' });
     setSelectedItemId(cardToSave.id);
     showToast('Story Card saved successfully!');
@@ -295,15 +265,14 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
   const handleSaveChoice = (choiceToSave: PlayerChoice) => {
     debugService.log('PhoenixEditor: handleSaveChoice called', { choiceToSave, currentEditingState: editingState });
-    setGameData(prev => {
-       const isNew = editingState.mode === 'new-choice';
-       const newChoices = isNew
-        ? [...prev.choices, choiceToSave]
-        : prev.choices.map(c => c.id === choiceToSave.id ? choiceToSave : c);
-      const newGameData = { ...prev, choices: newChoices };
-      debugService.log(`PhoenixEditor: ${isNew ? 'Added new' : 'Updated'} choice.`, { oldGameData: prev, newGameData });
-      return newGameData;
-    });
+    const isNew = editingState.mode === 'new-choice';
+    const newChoices = isNew
+     ? [...gameData.choices, choiceToSave]
+     : gameData.choices.map(c => c.id === choiceToSave.id ? choiceToSave : c);
+    const newGameData = { ...gameData, choices: newChoices };
+    debugService.log(`PhoenixEditor: Committing ${isNew ? 'new' : 'updated'} choice.`, { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
+
     setEditingState({ mode: 'none' });
     setSelectedItemId(choiceToSave.id);
     showToast('Choice saved successfully!');
@@ -311,15 +280,14 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
   const handleSaveStuffSet = (stuffSetToSave: StuffSet) => {
     debugService.log('PhoenixEditor: handleSaveStuffSet called', { stuffSetToSave, currentEditingState: editingState });
-    setGameData(prev => {
-       const isNew = editingState.mode === 'new-stuff-set';
-       const newStuff = isNew
-        ? [...prev.stuff, stuffSetToSave]
-        : prev.stuff.map(s => s.id === stuffSetToSave.id ? stuffSetToSave : s);
-      const newGameData = { ...prev, stuff: newStuff };
-      debugService.log(`PhoenixEditor: ${isNew ? 'Added new' : 'Updated'} stuff set.`, { oldGameData: prev, newGameData });
-      return newGameData;
-    });
+    const isNew = editingState.mode === 'new-stuff-set';
+    const newStuff = isNew
+     ? [...gameData.stuff, stuffSetToSave]
+     : gameData.stuff.map(s => s.id === stuffSetToSave.id ? stuffSetToSave : s);
+    const newGameData = { ...gameData, stuff: newStuff };
+    debugService.log(`PhoenixEditor: Committing ${isNew ? 'new' : 'updated'} stuff set.`, { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
+
     setEditingState({ mode: 'none' });
     setSelectedItemId(stuffSetToSave.id);
     showToast('Stuff Set saved successfully!');
@@ -327,44 +295,27 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
   const handleMoveStoryCard = (cardId: string, direction: 'up' | 'down') => {
     debugService.log('PhoenixEditor: Moving story card', { cardId, direction });
-    setGameData(prev => {
-      const cards = [...prev.story];
-      const index = cards.findIndex(c => c.id === cardId);
-      if (index === -1) {
-        debugService.log('PhoenixEditor: Move failed, card not found', { cardId });
-        return prev;
-      }
-      if (direction === 'up' && index > 0) {
-        [cards[index - 1], cards[index]] = [cards[index], cards[index - 1]];
-      } else if (direction === 'down' && index < cards.length - 1) {
-        [cards[index + 1], cards[index]] = [cards[index], cards[index + 1]];
-      }
-      const newState = { ...prev, story: cards };
-      debugService.log('PhoenixEditor: Story card moved', { oldState: prev, newState });
-      return newState;
-    });
+    const cards = [...gameData.story];
+    const index = cards.findIndex(c => c.id === cardId);
+    if (index === -1) {
+      debugService.log('PhoenixEditor: Move failed, card not found', { cardId });
+      return;
+    }
+    if (direction === 'up' && index > 0) {
+      [cards[index - 1], cards[index]] = [cards[index], cards[index - 1]];
+    } else if (direction === 'down' && index < cards.length - 1) {
+      [cards[index + 1], cards[index]] = [cards[index], cards[index + 1]];
+    }
+    const newGameData = { ...gameData, story: cards };
+    debugService.log('PhoenixEditor: Committing story card move', { oldGameData: gameData, newGameData });
+    onCommitChange(newGameData);
   };
 
   const handleCancelEdit = () => {
-    debugService.log('PhoenixEditor: Edit cancelled', { editingState, originalItemBeforeEdit });
-    
-    // If we were editing an existing item (not a new one), revert any auto-saved changes.
-    if (originalItemBeforeEdit) {
-        if (editingState.mode === 'edit-template') {
-            setGameData(prev => {
-                const revertedTemplate = originalItemBeforeEdit as Template;
-                const newTemplates = prev.templates.map(t => t.id === revertedTemplate.id ? revertedTemplate : t);
-                const newGameData = { ...prev, templates: newTemplates };
-                debugService.log("PhoenixEditor: Reverting template changes on cancel.", { oldGameData: prev, newGameData });
-                return newGameData;
-            });
-        }
-        // NOTE: This revert logic is currently only implemented for TemplateEditor as it's the only one with auto-saving.
-        // Other editors would need to be converted to controlled components with an onChange prop to use this pattern.
-    }
-    
+    debugService.log('PhoenixEditor: Edit cancelled', { editingState });
+    // With the removal of auto-saving, cancel simply closes the editor, discarding any local changes.
+    // No need to revert the global gameData state.
     setEditingState({ mode: 'none' });
-    setOriginalItemBeforeEdit(null);
   }
   
   const handleGenerateImage = useCallback(async (prompt: string, onUpdate: (base64: string) => void) => {
@@ -486,21 +437,20 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
         
         if(validatedItems.length === 0) return;
 
-        setGameData(prevData => {
-            const dataArray = [...(prevData[dataType] as any[])];
-            const dataMap = new Map(dataArray.map((item: any) => [item.id, item]));
-            
-            validatedItems.forEach(item => {
-                dataMap.set(item.id, item);
-            });
-            
-            const newState = {
-                ...prevData,
-                [dataType]: Array.from(dataMap.values())
-            };
-            debugService.log("PhoenixEditor: gameData updated from bulk import", { dataType, oldState: prevData, newState });
-            return newState;
+        const currentData = gameData[dataType] as any[];
+        const dataMap = new Map(currentData.map((item: any) => [item.id, item]));
+        
+        validatedItems.forEach(item => {
+            dataMap.set(item.id, item);
         });
+        
+        const newGameData = {
+            ...gameData,
+            [dataType]: Array.from(dataMap.values())
+        };
+        
+        debugService.log("PhoenixEditor: Committing bulk import to history", { dataType, oldGameData: gameData, newGameData });
+        onCommitChange(newGameData);
 
         if (e.target) {
             e.target.value = '';
@@ -823,7 +773,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
   }, [gameData.templates]);
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-200">
+    <div className="flex h-full bg-gray-900 text-gray-200">
       <nav className="w-20 bg-gray-950 flex flex-col items-center pt-5 space-y-4 border-r border-gray-800">
         <TabButton tab="world" icon={<GlobeAltIcon className="w-6 h-6"/>} label="World" />
         <TabButton tab="story" icon={<BookOpenIcon className="w-6 h-6"/>} label="Story" />
@@ -866,11 +816,9 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
                             onSelect={(id) => { setSelectedItemId(id); setEditingState({mode: 'none'}) }}
                             onEdit={(template) => {
                                 setSelectedItemId(template.id);
-                                // Deep copy to prevent mutations from affecting the original object in gameData
-                                const original = JSON.parse(JSON.stringify(template));
-                                setOriginalItemBeforeEdit(original);
-                                debugService.log("PhoenixEditor: Storing original template for potential cancel", { original });
-                                setEditingState({ mode: 'edit-template', template });
+                                const templateToEdit = JSON.parse(JSON.stringify(template));
+                                debugService.log("PhoenixEditor: Starting to edit template", { template: templateToEdit });
+                                setEditingState({ mode: 'edit-template', template: templateToEdit });
                             }}
                             onDelete={(template) => {
                                 const descendantIds = getDescendantIds(template.id, gameData.templates);
@@ -886,10 +834,11 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
 
                         const handleEdit = () => {
                             setSelectedItemId(item.id);
-                             if (isStoryCard) setEditingState({ mode: 'edit-story-card', card: item as StoryCard });
-                             else if (isChoice) setEditingState({ mode: 'edit-choice', choice: item as PlayerChoice });
-                             else if (isStuffSet) setEditingState({ mode: 'edit-stuff-set', stuffSet: item as StuffSet });
-                             else setEditingState({ mode: 'edit-entity', entity: item as Entity });
+                            const itemToEdit = JSON.parse(JSON.stringify(item));
+                             if (isStoryCard) setEditingState({ mode: 'edit-story-card', card: itemToEdit as StoryCard });
+                             else if (isChoice) setEditingState({ mode: 'edit-choice', choice: itemToEdit as PlayerChoice });
+                             else if (isStuffSet) setEditingState({ mode: 'edit-stuff-set', stuffSet: itemToEdit as StuffSet });
+                             else setEditingState({ mode: 'edit-entity', entity: itemToEdit as Entity });
                         };
 
                         const handleDelete = () => {
@@ -1009,7 +958,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, setGameD
           {deletionModalState.type === 'delete-choice' && <p className="mt-2 text-sm text-yellow-400">Any story cards using this choice will be unlinked. This action cannot be undone.</p>}
           {deletionModalState.type === 'delete-stuff-set' && <p className="mt-2 text-sm text-yellow-400">Any templates using this set will have it removed. This action cannot be undone.</p>}
 
-          {deletionModalState.type !== 'none' && !['delete-template', 'delete-choice', 'delete-stuff-set'].includes(deletionModalState.type) && <p className="mt-2 text-sm text-yellow-400">This action cannot be undone.</p>}
+          <p className="mt-2 text-sm text-yellow-400">You can use Undo (Ctrl+Z) to revert this action.</p>
         </div>
         <div className="mt-6 flex justify-end space-x-3">
           <button onClick={() => setDeletionModalState({ type: 'none' })} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>

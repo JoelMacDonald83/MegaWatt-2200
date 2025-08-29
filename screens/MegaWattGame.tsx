@@ -1,8 +1,12 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet, Condition } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
+import { ArrowDownTrayIcon } from '../components/icons/ArrowDownTrayIcon';
+import { ArrowUpTrayIcon } from '../components/icons/ArrowUpTrayIcon';
+import { ArrowUturnLeftIcon } from '../components/icons/ArrowUturnLeftIcon';
+import { ArrowUturnRightIcon } from '../components/icons/ArrowUturnRightIcon';
 
 interface ResolvedAttribute {
     definition: AttributeDefinition;
@@ -62,6 +66,12 @@ const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEn
 interface MegaWattGameProps {
   gameData: GameData;
   onChoiceMade: (outcome: ChoiceOutcome) => void;
+  onSaveGame: () => void;
+  onLoadGame: (jsonString: string) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const AttributeDisplay: React.FC<{
@@ -355,10 +365,11 @@ const IntroCard: React.FC<{ card: StoryCard; choice?: PlayerChoice; gameData: Ga
 };
 
 
-export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMade }) => {
+export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMade, onSaveGame, onLoadGame, onUndo, onRedo, canUndo, canRedo }) => {
     const { story, choices } = gameData;
     const [introStep, setIntroStep] = useState(story && story.length > 0 ? 0 : -1);
     const [animationState, setAnimationState] = useState<'in' | 'out'>('in');
+    const loadInputRef = useRef<HTMLInputElement>(null);
     
     useEffect(() => {
         debugService.log("MegaWattGame: Component mounted", { gameData });
@@ -388,6 +399,30 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
         }, transitionDuration * 1000 + 100); // Must be slightly longer than CSS animation duration
     };
 
+    const handleLoadClick = () => {
+        loadInputRef.current?.click();
+    };
+    
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target?.result;
+            if (typeof text === 'string') {
+                onLoadGame(text);
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset file input value to allow loading the same file again
+        if(event.target) {
+            event.target.value = '';
+        }
+    };
+
+
     const entityMap = useMemo(() => {
         return new Map(gameData.entities.map(e => [e.id, e]));
     }, [gameData.entities]);
@@ -414,11 +449,39 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
     return (
         <div className="min-h-screen bg-gray-900 bg-grid-cyan-500/10 p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto">
-                <header className="text-center mb-12">
+                <header className="relative text-center mb-12">
                     <h1 className="text-5xl font-extrabold text-white tracking-wider">
                         Welcome to <span className="text-cyan-400">{gameData.colonyName || "The Colony"}</span>
                     </h1>
                     <p className="text-gray-400 mt-2">An interactive colony simulation.</p>
+
+                    <div className="absolute top-0 right-0 flex flex-col sm:flex-row gap-2">
+                        <button onClick={onUndo} disabled={!canUndo} className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed" title="Undo Last Choice">
+                            <ArrowUturnLeftIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline">Undo</span>
+                        </button>
+                        <button onClick={onRedo} disabled={!canRedo} className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm disabled:text-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed" title="Redo Last Choice">
+                            <ArrowUturnRightIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline">Redo</span>
+                        </button>
+                        <button 
+                            onClick={onSaveGame} 
+                            className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
+                            title="Save Game Progress"
+                        >
+                            <ArrowDownTrayIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline">Save</span>
+                        </button>
+                        <button 
+                            onClick={handleLoadClick} 
+                            className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-md transition duration-300 text-sm"
+                            title="Load Game Progress"
+                        >
+                            <ArrowUpTrayIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline">Load</span>
+                        </button>
+                        <input type="file" accept=".json" ref={loadInputRef} onChange={handleFileChange} className="hidden" />
+                    </div>
                 </header>
                 
                 <main className="space-y-12">
