@@ -1,4 +1,4 @@
-// FIX: Import 'useCallback' from 'react' to fix a 'Cannot find name' error.
+
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
@@ -113,7 +113,7 @@ const parsePlaceholders = (text: string | undefined, entity: Entity, template: T
     return processedText;
 }
 
-const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onComplete: (option?: ChoiceOption) => void; animationState: 'in' | 'out'; isFirstScene: boolean }> = ({ choice, gameData, onComplete, animationState, isFirstScene }) => {
+export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onComplete: (option?: ChoiceOption) => void; animationState: 'in' | 'out'; isFirstScene: boolean }> = ({ choice, gameData, onComplete, animationState, isFirstScene }) => {
     const styles = useMemo(() => {
         const s = choice.styles || {};
         const fgs = s.foregroundImageStyles || {};
@@ -158,35 +158,64 @@ const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onCom
             });
         }
         if (choice.choiceType === 'dynamic_from_template' && choice.dynamicConfig) {
-            const { sourceTemplateId, optionTemplate, outcomeTemplates, nextChoiceId, filterConditions } = choice.dynamicConfig;
-            const sourceTemplate = gameData.templates.find(t => t.id === sourceTemplateId);
-            if (!sourceTemplate) return [];
+            const { sourceTemplateIds, requiredComponentIds, excludedComponentIds, optionTemplate, outcomeTemplates, nextChoiceId, filterConditions } = choice.dynamicConfig;
             
-            let sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
+            if (!sourceTemplateIds || sourceTemplateIds.length === 0) return [];
 
+            // 1. Filter by base blueprint (OR logic)
+            let sourceEntities = gameData.entities.filter(e => sourceTemplateIds.includes(e.templateId));
+
+            // 2. Further filter by required/excluded components (AND logic), checking inheritance chain
+            if ((requiredComponentIds && requiredComponentIds.length > 0) || (excludedComponentIds && excludedComponentIds.length > 0)) {
+                sourceEntities = sourceEntities.filter(entity => {
+                    const template = gameData.templates.find(t => t.id === entity.templateId);
+                    if (!template) return false;
+
+                    const allComponentIds = new Set<string>();
+                    let current: Template | undefined = template;
+                    while (current) {
+                        (current.includedComponentIds || []).forEach(id => allComponentIds.add(id));
+                        current = gameData.templates.find(t => t.id === current?.parentId);
+                    }
+
+                    const hasRequired = !requiredComponentIds || requiredComponentIds.length === 0 || requiredComponentIds.every(reqId => allComponentIds.has(reqId));
+                    const hasExcluded = excludedComponentIds && excludedComponentIds.length > 0 && excludedComponentIds.some(exId => allComponentIds.has(exId));
+                    
+                    return hasRequired && !hasExcluded;
+                });
+            }
+
+            // 3. Apply final filter conditions
             if (filterConditions && filterConditions.length > 0) {
                 sourceEntities = sourceEntities.filter(entity => 
                     filterConditions.every(cond => {
-                         if (cond.type === 'attribute') {
+                        if (cond.type === 'attribute' || cond.type === 'has_stuff') {
+                            // For conditions that target a specific entity, we substitute the
+                            // entity being iterated over as the target.
                             return evaluateCondition({ ...cond, targetEntityId: entity.id }, gameData);
-                         }
-                        return evaluateCondition(cond, gameData);
+                        }
+                        return evaluateCondition(cond, gameData); // For global conditions like 'entity_exists'
                     })
                 );
             }
 
-            return sourceEntities.map((entity, index) => ({
-                id: `dynamic_opt_${entity.id}_${index}`,
-                text: parsePlaceholders(optionTemplate.text, entity, sourceTemplate),
-                outcomes: outcomeTemplates,
-                nextChoiceId: nextChoiceId || null,
-                sourceEntityId: entity.id,
-            }));
+            // 4. Map the final list of entities to choice options
+            return sourceEntities.map((entity, index): ChoiceOption | null => {
+                const entityTemplate = gameData.templates.find(t => t.id === entity.templateId);
+                if (!entityTemplate) return null;
+
+                return {
+                    id: `dynamic_opt_${entity.id}_${index}`,
+                    text: parsePlaceholders(optionTemplate.text, entity, entityTemplate),
+                    outcomes: outcomeTemplates,
+                    nextChoiceId: nextChoiceId || null,
+                    sourceEntityId: entity.id,
+                };
+            }).filter((opt): opt is ChoiceOption => opt !== null);
         }
         return [];
     }, [choice, gameData]);
 
-    // CSS Classes & Styles omitted for brevity but they are the same as before
     const positionClass = { top: 'justify-start pt-12 md:pt-24', middle: 'justify-center', bottom: 'justify-end pb-12 md:pb-24' }[styles.textPosition];
     const textAlignClass = { left: 'text-left items-start', center: 'text-center items-center', right: 'text-right items-end' }[styles.textAlign];
     const overlayClass = { none: '', light: 'bg-gradient-to-t from-black/40 via-black/20 to-transparent', medium: 'bg-gradient-to-t from-black/80 via-black/50 to-transparent', heavy: 'bg-gradient-to-t from-black/95 via-black/70 to-black/20' }[styles.overlayStrength];
@@ -207,7 +236,7 @@ const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onCom
 
 
     return (
-        <div className={`fixed inset-0 bg-black ${sceneTransitionClass}`} style={sceneStyle}>
+        <div className={`fixed inset-0 bg-black ${sceneTransitionClass} z-30`} style={sceneStyle}>
             {choice.imageBase64 && <div className={`absolute inset-0 bg-cover bg-center ${styles.backgroundAnimation !== 'none' ? `anim-bg-${styles.backgroundAnimation}` : ''} ${backgroundEffectClass} transition-all duration-300`} style={bgStyle} />}
             <div className={`absolute inset-0 ${overlayClass}`} />
             {choice.foregroundImageBase64 && <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}><img src={choice.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full ${fgSizeClass} ${fgAnimationClass}`} alt="Foreground Element"/></div>}
@@ -227,65 +256,6 @@ const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onCom
         </div>
     );
 };
-
-const GamePlayer: React.FC<{gameData: GameData, onChoiceMade: (outcomes: ChoiceOutcome[]) => void, onExit: () => void}> = ({ gameData, onChoiceMade, onExit }) => {
-    const { choices, startChoiceId } = gameData;
-    const [currentChoiceId, setCurrentChoiceId] = useState<string | null>(startChoiceId);
-    const [animationState, setAnimationState] = useState<'in' | 'out'>('in');
-
-    useEffect(() => {
-        setCurrentChoiceId(startChoiceId);
-        setAnimationState('in');
-    }, [startChoiceId]);
-
-    const handleSceneCompletion = (option?: ChoiceOption) => {
-        const currentChoice = choices.find(c => c.id === currentChoiceId);
-        if (!currentChoice) return;
-
-        if (option) {
-            let resolvedOutcomes = option.outcomes;
-            if (option.sourceEntityId) {
-                resolvedOutcomes = option.outcomes.map(outcome => {
-                    if (outcome.type === 'update_entity') {
-                        const newOutcome: ChoiceOutcomeUpdateEntity = {...outcome};
-                        if (newOutcome.targetEntityId === '<chosen_entity>') newOutcome.targetEntityId = option.sourceEntityId!;
-                        if (newOutcome.value === '<chosen_entity_id>') newOutcome.value = option.sourceEntityId!;
-                        return newOutcome;
-                    }
-                    return outcome;
-                });
-            }
-            onChoiceMade(resolvedOutcomes);
-        }
-        
-        const transitionDuration = currentChoice.styles?.cardTransitionDuration || 0.6;
-        setAnimationState('out');
-        
-        setTimeout(() => {
-            const nextChoiceId = option ? option.nextChoiceId : currentChoice.nextChoiceId;
-            if (nextChoiceId && choices.find(c => c.id === nextChoiceId)) {
-                setCurrentChoiceId(nextChoiceId);
-                setAnimationState('in');
-            } else {
-                onExit(); // No next choice, exit gameplay
-            }
-        }, transitionDuration * 1000 + 100);
-    };
-    
-    const currentChoice = useMemo(() => choices.find(c => c.id === currentChoiceId), [choices, currentChoiceId]);
-
-    if (!currentChoiceId || !currentChoice) {
-        return (
-            <div className="flex items-center justify-center h-full bg-black">
-                <p className="text-red-500">Error: Starting scene not found.</p>
-                <button onClick={onExit} className="ml-4 text-white underline">Return to Menu</button>
-            </div>
-        );
-    }
-    
-    return <ScenePresenter choice={currentChoice} onComplete={handleSceneCompletion} animationState={animationState} isFirstScene={currentChoiceId === startChoiceId} gameData={gameData} />;
-};
-
 
 // --- GAME LAUNCHER COMPONENT ---
 
@@ -572,15 +542,15 @@ const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameD
 
 // --- MAIN FLOW CONTROLLER ---
 
-type LauncherFlowView = 'company_launcher' | 'game_launcher' | 'gameplay';
+type LauncherFlowView = 'company_launcher' | 'game_launcher';
 
 interface LauncherFlowProps {
   projectData: PhoenixProject;
   onChoiceMade: (gameId: string, outcomes: ChoiceOutcome[]) => void;
-  isPreview?: boolean;
+  onStartSimulation?: (game: GameData) => void;
 }
 
-export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoiceMade, isPreview = false }) => {
+export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onStartSimulation }) => {
     const [currentView, setCurrentView] = useState<LauncherFlowView>('company_launcher');
     const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
 
@@ -590,16 +560,7 @@ export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoic
     }, [selectedGameId, projectData.games]);
 
     const handleSelectGame = (gameId: string) => {
-        if (isPreview) return;
         setSelectedGameId(gameId);
-        setCurrentView('game_launcher');
-    };
-
-    const handlePlayGame = () => {
-        if (selectedGame) setCurrentView('gameplay');
-    };
-
-    const handleExitGame = () => {
         setCurrentView('game_launcher');
     };
     
@@ -608,12 +569,15 @@ export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onChoic
         setCurrentView('company_launcher');
     };
 
+    const handlePlay = () => {
+        if (selectedGame && onStartSimulation) {
+            onStartSimulation(selectedGame);
+        }
+    }
+
     switch (currentView) {
         case 'game_launcher':
-            if (selectedGame) return <GameLauncher gameData={selectedGame} onPlay={handlePlayGame} onBack={handleBackToCompanyLauncher} />;
-            setCurrentView('company_launcher'); return null; // Fallback
-        case 'gameplay':
-            if (selectedGame) return <GamePlayer gameData={selectedGame} onExit={handleExitGame} onChoiceMade={(outcomes) => onChoiceMade(selectedGame.id, outcomes)} />;
+            if (selectedGame) return <GameLauncher gameData={selectedGame} onPlay={handlePlay} onBack={handleBackToCompanyLauncher} />;
             setCurrentView('company_launcher'); return null; // Fallback
         case 'company_launcher':
         default:

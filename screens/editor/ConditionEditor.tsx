@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../../components/Modal';
 import { GameData, Condition, ConditionOperator, AttributeDefinition, Template } from '../../types';
@@ -212,15 +213,17 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
 
     const renderHasStuffEditor = () => (
          <div className="space-y-3">
-             <StyleSelect 
-                label="Target Entity" 
-                value={stuffCondition.targetEntityId} 
-                onChange={e => setStuffCondition(p => ({...p, targetEntityId: e.target.value }))}
-                help="The specific entity to check for a component."
-            >
-                <option value="">-- Select Entity --</option>
-                {gameData.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </StyleSelect>
+             {!isFilter && (
+                <StyleSelect 
+                    label="Target Entity" 
+                    value={stuffCondition.targetEntityId} 
+                    onChange={e => setStuffCondition(p => ({...p, targetEntityId: e.target.value }))}
+                    help="The specific entity to check for a component."
+                >
+                    <option value="">-- Select Entity --</option>
+                    {gameData.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </StyleSelect>
+             )}
             <StyleSelect 
                 label="Component Item" 
                 value={stuffCondition.stuffItemId} 
@@ -256,8 +259,8 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
                     help="Select the fundamental type of check you want to perform on the game state."
                 >
                     <option value="attribute">Check an Attribute</option>
+                    <option value="has_stuff">Check if Entity Has Component</option>
                     {!isFilter && <option value="entity_exists">Check if Entity Exists</option>}
-                    {!isFilter && <option value="has_stuff">Check if Entity Has "Stuff"</option>}
                 </StyleSelect>
 
                 <div className="p-3 bg-gray-900/50 rounded-md border border-gray-700">

@@ -1,5 +1,11 @@
+
+
+
+
+
+
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle } from '../types';
+import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle, ChoiceChunk } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
 import { CubeTransparentIcon } from '../components/icons/CubeTransparentIcon';
 import { RectangleStackIcon } from '../components/icons/RectangleStackIcon';
@@ -32,6 +38,7 @@ import { ArrowUpIcon } from '../components/icons/ArrowUpIcon';
 import { ArrowDownIcon } from '../components/icons/ArrowDownIcon';
 import { MegaWattGame } from './MegaWattGame';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { ChevronDownIcon } from '../components/icons/ChevronDownIcon';
 
 type EditorTabs = 'game_menu' | 'gameplay' | 'blueprints' | 'entities';
 type TopLevelTabs = 'launcher' | 'games';
@@ -41,7 +48,8 @@ type DeletionModalState =
   | { type: 'delete-game'; game: GameData }
   | { type: 'delete-template'; template: Template, descendantCount: number }
   | { type: 'delete-entity'; entity: Entity }
-  | { type: 'delete-choice'; choice: PlayerChoice };
+  | { type: 'delete-choice'; choice: PlayerChoice }
+  | { type: 'delete-chunk', chunk: ChoiceChunk };
 
 type EditingState =
   | { mode: 'none' }
@@ -50,13 +58,16 @@ type EditingState =
   | { mode: 'edit-entity'; entity: Entity }
   | { mode: 'new-entity'; entity: Entity }
   | { mode: 'edit-choice'; choice: PlayerChoice }
-  | { mode: 'new-choice'; choice: PlayerChoice };
+  | { mode: 'new-choice'; choice: PlayerChoice; chunkId: string }
+  | { mode: 'edit-chunk'; chunk: ChoiceChunk }
+  | { mode: 'new-chunk' };
 
 interface PhoenixEditorProps {
   projectData: PhoenixProject;
   onCommitChange: (projectData: PhoenixProject) => void;
   onLoadProject: (jsonString: string) => void;
   onSaveProject: () => void;
+  onStartSimulation: (game: GameData) => void;
 }
 
 // Helper to get all descendants of a template
@@ -176,6 +187,197 @@ const NewsListEditor: React.FC<{
     </div>
 );
 
+// FIX: Added missing ChunkEditorModal component.
+const ChunkEditorModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (chunk: ChoiceChunk) => void;
+    initialChunk: ChoiceChunk | null;
+}> = ({ isOpen, onClose, onSave, initialChunk }) => {
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+
+    useEffect(() => {
+        if (initialChunk) {
+            setName(initialChunk.name);
+            setDescription(initialChunk.description);
+        } else {
+            setName('');
+            setDescription('');
+        }
+    }, [initialChunk, isOpen]);
+
+    const handleSave = () => {
+        const chunkToSave: ChoiceChunk = {
+            id: initialChunk?.id || `chunk_${Date.now()}`,
+            name: name.trim() || 'Untitled Chunk',
+            description,
+            choiceIds: initialChunk?.choiceIds || [],
+        };
+        onSave(chunkToSave);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={initialChunk ? 'Edit Chunk' : 'New Chunk'}>
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Chunk Name</label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"
+                        placeholder="e.g., Chapter 1"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Description</label>
+                    <textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        rows={3}
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"
+                        placeholder="A brief description of this group of scenes."
+                    />
+                </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+                <button onClick={onClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold">Save</button>
+            </div>
+        </Modal>
+    );
+};
+
+// FIX: Added missing ChunkedList component.
+const ChunkedList: React.FC<{
+    chunk: ChoiceChunk;
+    gameData: GameData;
+    selectedItemId: string | null;
+    setSelectedItemId: (id: string | null) => void;
+    setEditingState: (state: EditingState) => void;
+    setDeletionModalState: (state: DeletionModalState) => void;
+    handleSetStartChoice: (id: string) => void;
+    draggedChoice: { choiceId: string; sourceChunkId: string } | null;
+    setDraggedChoice: (dragged: { choiceId: string; sourceChunkId: string } | null) => void;
+    dropIndicator: { chunkId: string; index: number } | null;
+    setDropIndicator: (indicator: { chunkId: string; index: number } | null) => void;
+    onDropChoice: (targetChunkId: string, targetIndex: number) => void;
+}> = ({
+    chunk,
+    gameData,
+    selectedItemId,
+    setSelectedItemId,
+    setEditingState,
+    setDeletionModalState,
+    handleSetStartChoice,
+    draggedChoice,
+    setDraggedChoice,
+    dropIndicator,
+    setDropIndicator,
+    onDropChoice
+}) => {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const choicesInChunk = (chunk.choiceIds || []).map(id => gameData.allChoices.find(c => c.id === id)).filter((c): c is PlayerChoice => !!c);
+
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choiceId: string) => {
+        setDraggedChoice({ choiceId, sourceChunkId: chunk.id });
+        e.dataTransfer.effectAllowed = 'move';
+    };
+    
+    const handleDragEnd = () => {
+        setDraggedChoice(null);
+        setDropIndicator(null);
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        e.preventDefault();
+        if (draggedChoice) {
+            setDropIndicator({ chunkId: chunk.id, index });
+        }
+    };
+    
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setDropIndicator(null);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+        e.preventDefault();
+        if (!draggedChoice) return;
+        
+        if (draggedChoice.sourceChunkId === chunk.id) {
+            const originalIndex = (chunk.choiceIds || []).indexOf(draggedChoice.choiceId);
+            if (index === originalIndex || index === originalIndex + 1) {
+                setDropIndicator(null);
+                return;
+            }
+        }
+        
+        onDropChoice(chunk.id, index);
+    };
+
+    return (
+        <div className="bg-[var(--bg-panel-light)]/30 rounded-md border border-[var(--border-primary)]">
+            <div className="flex items-center p-2 group bg-[var(--bg-panel)]/40">
+                <button onClick={() => setIsExpanded(!isExpanded)} className="p-1">
+                    <ChevronDownIcon className={`w-4 h-4 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                </button>
+                <div className="flex-grow">
+                    <h3 className="font-semibold text-[var(--text-primary)]">{chunk.name}</h3>
+                </div>
+                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setEditingState({mode: 'edit-chunk', chunk})} className="p-1"><PencilIcon className="w-4 h-4"/></button>
+                    <button onClick={() => setDeletionModalState({type: 'delete-chunk', chunk})} className="p-1 text-[var(--text-danger)]"><TrashIcon className="w-4 h-4"/></button>
+                </div>
+            </div>
+            {isExpanded && (
+                <div 
+                    className="p-1 space-y-1"
+                    onDragLeave={handleDragLeave}
+                >
+                    <div onDrop={(e) => handleDrop(e, 0)} onDragOver={(e) => handleDragOver(e, 0)} className="h-2 -mb-1">
+                        {dropIndicator?.chunkId === chunk.id && dropIndicator.index === 0 && <div className="h-1 bg-[var(--text-accent)] rounded-full mx-2" />}
+                    </div>
+                    {choicesInChunk.map((choice, index) => (
+                        <div key={choice.id}>
+                            <div
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, choice.id)}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => setSelectedItemId(choice.id)}
+                                className={`p-2 rounded-md cursor-pointer flex justify-between items-center group/item ${selectedItemId === choice.id ? 'bg-[var(--bg-active)]/20' : 'hover:bg-[var(--bg-hover)]'}`}
+                            >
+                                <span className={`flex-grow text-sm ${selectedItemId === choice.id ? 'text-[var(--text-accent)]' : ''}`}>{choice.name}</span>
+                                {/* FIX: The 'title' prop is not valid on SVG components for tooltips. Moved it to a wrapping span. */}
+                                {gameData.startChoiceId === choice.id && <span title="Start Scene"><PlayIcon className="w-4 h-4 text-green-400 mr-2 flex-shrink-0" /></span>}
+                                <div className="opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center flex-shrink-0">
+                                    <button onClick={(e) => { e.stopPropagation(); handleSetStartChoice(choice.id) }} className="p-1" title="Set as Start Scene">
+                                        <PlayIcon className={`w-4 h-4 ${gameData.startChoiceId === choice.id ? 'text-green-400' : 'text-gray-500'}`} />
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); setEditingState({ mode: 'edit-choice', choice }) }} className="p-1"><PencilIcon className="w-4 h-4" /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); setDeletionModalState({ type: 'delete-choice', choice }) }} className="p-1 text-[var(--text-danger)]"><TrashIcon className="w-4 h-4" /></button>
+                                </div>
+                            </div>
+                            <div onDrop={(e) => handleDrop(e, index + 1)} onDragOver={(e) => handleDragOver(e, index + 1)} className="h-2 -mt-1">
+                               {dropIndicator?.chunkId === chunk.id && dropIndicator.index === index + 1 && <div className="h-1 bg-[var(--text-accent)] rounded-full mx-2" />}
+                            </div>
+                        </div>
+                    ))}
+                     <button
+                        onClick={() => setEditingState({ mode: 'new-choice', choice: { id: `choice_${Date.now()}`, name: 'New Scene', description: '', imagePrompt: '', choiceType: 'static' }, chunkId: chunk.id })}
+                        className="w-full text-center text-sm p-2 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center gap-1"
+                     >
+                        <PlusIcon className="w-4 h-4"/> New Scene
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const GameEditor: React.FC<{
     gameData: GameData,
@@ -192,6 +394,10 @@ const GameEditor: React.FC<{
     const [toast, setToast] = useState({ show: false, message: '' });
     const [editingNewsItem, setEditingNewsItem] = useState<NewsItem | { isNew: true } | null>(null);
     const [newMenuTag, setNewMenuTag] = useState('');
+
+    const [draggedChoice, setDraggedChoice] = useState<{ choiceId: string; sourceChunkId: string } | null>(null);
+    const [dropIndicator, setDropIndicator] = useState<{ chunkId: string; index: number } | null>(null);
+
 
     const showToast = (message: string) => {
         debugService.log("GameEditor: Showing toast", { message });
@@ -236,7 +442,7 @@ const GameEditor: React.FC<{
         updateMenuSettings('news', news.filter(n => n.id !== newsItemId));
     };
 
-    const handleAddItem = (type: 'choice' | 'template' | 'component' | 'entity') => {
+    const handleAddItem = (type: 'template' | 'component' | 'entity') => {
         if (type === 'template' || type === 'component') {
             const newTemplate: Template = { id: `template_${Date.now()}`, name: type === 'component' ? 'New Component' : 'New Template', description: '', tags: [], attributes: [], isComponent: type === 'component' };
             setEditingState({ mode: 'new-template', template: newTemplate });
@@ -244,11 +450,7 @@ const GameEditor: React.FC<{
             if (!entityFilter || entityFilter === 'all') return;
             const newEntity: Entity = { id: `entity_${Date.now()}`, templateId: entityFilter, name: 'New Entity', attributeValues: {} };
             setEditingState({ mode: 'new-entity', entity: newEntity });
-        } else if (type === 'choice') {
-            const newChoice: PlayerChoice = { id: `choice_${Date.now()}`, name: 'New Scene', description: 'A new scene begins...', imagePrompt: '', prompt: '', choiceType: 'static', staticOptions: [] };
-            setEditingState({ mode: 'new-choice', choice: newChoice });
         }
-        setSelectedItemId(null);
     };
 
     const handleDeleteConfirmed = () => {
@@ -261,8 +463,22 @@ const GameEditor: React.FC<{
             newGameData = { ...gameData, entities: gameData.entities.filter(e => e.id !== deletionModalState.entity.id) };
             if (selectedItemId === deletionModalState.entity.id) setSelectedItemId(null);
         } else if (deletionModalState.type === 'delete-choice') {
-            newGameData = { ...gameData, choices: gameData.choices.filter(c => c.id !== deletionModalState.choice.id) };
-            if (selectedItemId === deletionModalState.choice.id) setSelectedItemId(null);
+            const choiceIdToDelete = deletionModalState.choice.id;
+            newGameData = { 
+                ...gameData, 
+                allChoices: gameData.allChoices.filter(c => c.id !== choiceIdToDelete),
+                choiceChunks: gameData.choiceChunks.map(chunk => ({
+                    ...chunk,
+                    choiceIds: (chunk.choiceIds || []).filter(id => id !== choiceIdToDelete)
+                }))
+            };
+            if (selectedItemId === choiceIdToDelete) setSelectedItemId(null);
+        } else if (deletionModalState.type === 'delete-chunk') {
+            newGameData = { 
+                ...gameData, 
+                choiceChunks: gameData.choiceChunks.filter(c => c.id !== deletionModalState.chunk.id),
+                allChoices: gameData.allChoices.filter(choice => !(deletionModalState.chunk.choiceIds || []).includes(choice.id))
+            };
         }
         onCommitGameChange(newGameData);
         setDeletionModalState({ type: 'none' });
@@ -291,13 +507,34 @@ const GameEditor: React.FC<{
     };
 
     const handleSaveChoice = (choiceToSave: PlayerChoice) => {
-        const isNew = editingState.mode === 'new-choice';
-        const newChoices = isNew ? [...gameData.choices, choiceToSave] : gameData.choices.map(c => c.id === choiceToSave.id ? choiceToSave : c);
-        onCommitGameChange({ ...gameData, choices: newChoices });
+        if (editingState.mode === 'new-choice') {
+            const { chunkId } = editingState;
+            onCommitGameChange({
+                ...gameData,
+                allChoices: [...gameData.allChoices, choiceToSave],
+                choiceChunks: gameData.choiceChunks.map(chunk => 
+                    chunk.id === chunkId 
+                        ? { ...chunk, choiceIds: [...(chunk.choiceIds || []), choiceToSave.id] }
+                        : chunk
+                )
+            });
+        } else {
+            onCommitGameChange({
+                ...gameData,
+                allChoices: gameData.allChoices.map(c => c.id === choiceToSave.id ? choiceToSave : c)
+            });
+        }
         setEditingState({ mode: 'none' });
         setSelectedItemId(choiceToSave.id);
         showToast('Scene saved successfully!');
     };
+
+    const handleSaveChunk = (chunkToSave: ChoiceChunk) => {
+        const isNew = editingState.mode === 'new-chunk';
+        const newChunks = isNew ? [...gameData.choiceChunks, chunkToSave] : gameData.choiceChunks.map(c => c.id === chunkToSave.id ? chunkToSave : c);
+        onCommitGameChange({ ...gameData, choiceChunks: newChunks });
+        setEditingState({mode: 'none'});
+    }
 
     const handleSetStartChoice = (choiceId: string) => {
         onCommitGameChange({ ...gameData, startChoiceId: choiceId });
@@ -312,6 +549,39 @@ const GameEditor: React.FC<{
         onUpdate({ ...entity, attributeValues: { ...entity.attributeValues, [attributeId]: content } });
     }, [gameData.colonyName, gameData.templates]);
     
+    const handleDropChoice = (targetChunkId: string, targetIndex: number) => {
+        if (!draggedChoice) return;
+        const { choiceId, sourceChunkId } = draggedChoice;
+        
+        let newChunks = [...gameData.choiceChunks];
+        const sourceChunk = newChunks.find(c => c.id === sourceChunkId);
+        const targetChunk = newChunks.find(c => c.id === targetChunkId);
+
+        if (!sourceChunk || !targetChunk) return;
+
+        // Remove from source
+        const newSourceChoiceIds = (sourceChunk.choiceIds || []).filter(id => id !== choiceId);
+        
+        if (sourceChunkId === targetChunkId) {
+            // Reordering within the same chunk
+            newSourceChoiceIds.splice(targetIndex, 0, choiceId);
+            newChunks = newChunks.map(c => c.id === sourceChunkId ? { ...c, choiceIds: newSourceChoiceIds } : c);
+        } else {
+            // Moving between chunks
+            const newTargetChoiceIds = [...(targetChunk.choiceIds || [])];
+            newTargetChoiceIds.splice(targetIndex, 0, choiceId);
+            newChunks = newChunks.map(c => {
+                if (c.id === sourceChunkId) return { ...c, choiceIds: newSourceChoiceIds };
+                if (c.id === targetChunkId) return { ...c, choiceIds: newTargetChoiceIds };
+                return c;
+            });
+        }
+        
+        onCommitGameChange({ ...gameData, choiceChunks: newChunks });
+        setDraggedChoice(null);
+        setDropIndicator(null);
+    };
+
     const renderSummary = () => (
         <div className="flex-1 flex items-center justify-center bg-[var(--bg-main)]">
             <div className="text-center text-[var(--text-secondary)]">
@@ -337,6 +607,14 @@ const GameEditor: React.FC<{
                 return <EntityEditor key={editingState.entity.id} initialEntity={editingState.entity} onSave={handleSaveEntity} onCancel={handleCancelEdit} gameData={gameData} onGenerate={handleGenerateContent} onGenerateImage={onGenerateImage} isGenerating={isGenerating} isGeneratingImage={isGenerating === 'image'} isNew={editingState.mode === 'new-entity'} />;
             case 'new-choice': case 'edit-choice':
                 return <ChoiceEditor key={editingState.choice.id} initialChoice={editingState.choice} onSave={handleSaveChoice} onCancel={handleCancelEdit} gameData={gameData} isNew={editingState.mode === 'new-choice'} onGenerateImage={onGenerateImage} isGeneratingImage={isGenerating === 'image'} />;
+            case 'new-chunk':
+            case 'edit-chunk':
+                return <ChunkEditorModal
+                    isOpen={true}
+                    onClose={handleCancelEdit}
+                    onSave={handleSaveChunk}
+                    initialChunk={editingState.mode === 'edit-chunk' ? editingState.chunk : null}
+                />;
             case 'none': default:
                 return renderSummary();
         }
@@ -368,14 +646,22 @@ const GameEditor: React.FC<{
                   )}
               </div>
               <div className="flex-grow overflow-y-auto p-2 space-y-1">
-                  {activeTab === 'gameplay' && gameData.choices.map(choice => (
-                    <div key={choice.id} onClick={() => setSelectedItemId(choice.id)} className={`p-2 rounded-md cursor-pointer flex justify-between items-center group ${selectedItemId === choice.id ? 'bg-[var(--bg-active)]/20' : 'hover:bg-[var(--bg-hover)]'}`}>
-                      <span className={`flex-grow ${selectedItemId === choice.id ? 'text-[var(--text-accent)]' : ''}`}>{choice.name}</span>
-                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        {gameData.startChoiceId === choice.id ? (<StarIcon className="w-4 h-4 text-yellow-400" />) : (<button onClick={(e) => { e.stopPropagation(); handleSetStartChoice(choice.id)}} className="p-1 hover:bg-yellow-400/20 rounded-full"><StarIcon className="w-4 h-4 text-gray-500" /></button>)}
-                        <button onClick={(e) => { e.stopPropagation(); setEditingState({ mode: 'edit-choice', choice })}} className="p-1"><PencilIcon className="w-4 h-4"/></button>
-                      </div>
-                    </div>
+                  {activeTab === 'gameplay' && gameData.choiceChunks.map(chunk => (
+                    <ChunkedList
+                        key={chunk.id}
+                        chunk={chunk}
+                        gameData={gameData}
+                        selectedItemId={selectedItemId}
+                        setSelectedItemId={setSelectedItemId}
+                        setEditingState={setEditingState}
+                        setDeletionModalState={setDeletionModalState}
+                        handleSetStartChoice={handleSetStartChoice}
+                        draggedChoice={draggedChoice}
+                        setDraggedChoice={setDraggedChoice}
+                        dropIndicator={dropIndicator}
+                        setDropIndicator={setDropIndicator}
+                        onDropChoice={handleDropChoice}
+                    />
                   ))}
                   {activeTab === 'blueprints' && gameData.templates.filter(t => !t.isComponent).map(template => (
                      <div key={template.id} onClick={() => setSelectedItemId(template.id)} className={`p-2 rounded-md cursor-pointer flex justify-between items-center group ${selectedItemId === template.id ? 'bg-[var(--bg-active)]/20' : 'hover:bg-[var(--bg-hover)]'}`}>
@@ -395,7 +681,7 @@ const GameEditor: React.FC<{
                   ))}
               </div>
               <div className="p-2 border-t border-[var(--border-primary)]">
-                  {activeTab === 'gameplay' && <button onClick={() => handleAddItem('choice')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">New Scene</button>}
+                  {activeTab === 'gameplay' && <button onClick={() => setEditingState({mode: 'new-chunk'})} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">New Chunk</button>}
                   {activeTab === 'blueprints' && <button onClick={() => handleAddItem('template')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">New Blueprint</button>}
                   {activeTab === 'entities' && <button onClick={() => handleAddItem('entity')} disabled={entityFilter === 'all'} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold disabled:bg-[var(--bg-panel)] disabled:text-[var(--text-secondary)] disabled:cursor-not-allowed">New Entity</button>}
               </div>
@@ -449,6 +735,21 @@ const GameEditor: React.FC<{
           )}
 
            <Toast message={toast.message} show={toast.show} onClose={() => setToast({show: false, message: ''})} />
+
+           <Modal
+                isOpen={deletionModalState.type === 'delete-chunk' || deletionModalState.type === 'delete-choice'}
+                onClose={() => setDeletionModalState({ type: 'none' })}
+                title="Confirm Deletion"
+            >
+                <p>
+                    {deletionModalState.type === 'delete-chunk' && `Are you sure you want to delete the chunk "${deletionModalState.chunk.name}" and all scenes within it? This action cannot be undone.`}
+                    {deletionModalState.type === 'delete-choice' && `Are you sure you want to delete the scene "${deletionModalState.choice.name}"? This action cannot be undone.`}
+                </p>
+                <div className="mt-6 flex justify-end space-x-3">
+                    <button onClick={() => setDeletionModalState({ type: 'none' })} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
+                    <button onClick={handleDeleteConfirmed} className="px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors">Delete</button>
+                </div>
+            </Modal>
       </div>
     );
 };
@@ -516,27 +817,7 @@ const TextStyleEditor: React.FC<{
     );
 };
 
-const LauncherPreview: React.FC<{projectData: PhoenixProject}> = ({ projectData }) => {
-    const fakeOnChoice = () => {};
-    return (
-        <div className="bg-[var(--bg-main)] p-4 rounded-lg border border-[var(--border-primary)] h-full overflow-hidden">
-            <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 text-center">Live Preview</h3>
-            <div 
-                className="aspect-[16/9] w-full rounded-md overflow-hidden transform scale-[0.3] -translate-y-[35%] -translate-x-[35%]"
-                style={{
-                    height: '281.25%', // 1 / 0.3 * 100 / (16/9)
-                    width: '333.33%', // 1 / 0.3 * 100
-                }}
-            >
-                <div className="w-full h-full overflow-y-auto">
-                    <MegaWattGame projectData={projectData} onChoiceMade={fakeOnChoice} isPreview={true} />
-                </div>
-            </div>
-        </div>
-    )
-}
-
-export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCommitChange, onLoadProject, onSaveProject }) => {
+export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCommitChange, onLoadProject, onSaveProject, onStartSimulation }) => {
     const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
     const [topLevelTab, setTopLevelTab] = useState<TopLevelTabs>('games');
     const [isGenerating, setIsGenerating] = useState<string | null>(null);
@@ -570,7 +851,8 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
             gameTitle: 'New Game Project',
             colonyName: 'Untitled Colony',
             startChoiceId: null,
-            choices: [],
+            allChoices: [],
+            choiceChunks: [],
             templates: [],
             entities: [],
             menuSettings: { description: '', tags: [], showcaseImages: [], credits: '', news: [] }
@@ -691,98 +973,95 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
             </nav>
             <main className="flex-1 overflow-y-auto">
                 {topLevelTab === 'launcher' && (
-                    <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6 h-full">
-                         <div className="p-8 overflow-y-auto">
-                            <h1 className="text-[length:var(--font-size-3xl)] font-bold text-[var(--text-accent)] mb-6">Main Launcher Settings</h1>
-                             <div className="max-w-3xl space-y-8">
-                                <CollapsibleSection title="Branding">
-                                    <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Company Name</label><input type="text" value={projectData.launcherSettings.companyName} onChange={e => updateLauncherSettings({ companyName: e.target.value })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
-                                    <div>
-                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-2">Launcher Background Image</label>
-                                        <div className="w-full aspect-video bg-[var(--bg-input)] rounded-md border-2 border-dashed border-[var(--border-secondary)] flex items-center justify-center" style={{ backgroundImage: `url(${projectData.launcherSettings.backgroundImageBase64})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                                            {!projectData.launcherSettings.backgroundImageBase64 && <span className="text-[var(--text-tertiary)]">No Image Set</span>}
-                                        </div>
-                                        <textarea placeholder="AI Image Prompt..." value={projectData.launcherSettings.backgroundImagePrompt} onChange={e => updateLauncherSettings({ backgroundImagePrompt: e.target.value })} rows={2} className="mt-2 w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-                                            <button onClick={() => handleGenerateImage(projectData.launcherSettings.backgroundImagePrompt!, (b64) => updateLauncherSettings({ backgroundImageBase64: `data:image/jpeg;base64,${b64}` }))} disabled={isGenerating === 'image' || !projectData.launcherSettings.backgroundImagePrompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating === 'image' ? "Generating..." : "Generate"}</button>
-                                            <button onClick={() => launcherBgInputRef.current?.click()} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Image</button>
-                                            <input type="file" accept="image/*" ref={launcherBgInputRef} onChange={e => handleLauncherBgUpload(e.target.files?.[0] ?? null)} className="hidden"/>
-                                            <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>
-                                        </div>
+                    <div className="p-8">
+                         <h1 className="text-[length:var(--font-size-3xl)] font-bold text-[var(--text-accent)] mb-6">Main Launcher Settings</h1>
+                         <div className="max-w-3xl space-y-8">
+                            <CollapsibleSection title="Branding">
+                                <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Company Name</label><input type="text" value={projectData.launcherSettings.companyName} onChange={e => updateLauncherSettings({ companyName: e.target.value })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                                <div>
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-2">Launcher Background Image</label>
+                                    <div className="w-full aspect-video bg-[var(--bg-input)] rounded-md border-2 border-dashed border-[var(--border-secondary)] flex items-center justify-center" style={{ backgroundImage: `url(${projectData.launcherSettings.backgroundImageBase64})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                                        {!projectData.launcherSettings.backgroundImageBase64 && <span className="text-[var(--text-tertiary)]">No Image Set</span>}
                                     </div>
-                                </CollapsibleSection>
-                                 <CollapsibleSection title="Game List Container">
-                                    <StyleRadio label="Background Type" name="gamelist-bg-type" value={launcherListStyle.backgroundType || 'transparent'} onChange={(e) => updateLauncherListStyle({ backgroundType: e.target.value as GameListBackgroundType })} options={[{value: 'transparent', label: 'Transparent'}, {value: 'solid', label: 'Solid'}, {value: 'gradient', label: 'Gradient'}]} />
-                                    {launcherListStyle.backgroundType === 'solid' && (
-                                        <ColorInput label="Background Color" value={launcherListStyle.backgroundColor1 || '#1f293780'} onChange={val => updateLauncherListStyle({ backgroundColor1: val })} />
-                                    )}
-                                    {launcherListStyle.backgroundType === 'gradient' && (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <ColorInput label="Gradient Color 1" value={launcherListStyle.backgroundColor1 || '#1f293780'} onChange={val => updateLauncherListStyle({ backgroundColor1: val })} />
-                                            <ColorInput label="Gradient Color 2" value={launcherListStyle.backgroundColor2 || '#11182740'} onChange={val => updateLauncherListStyle({ backgroundColor2: val })} />
-                                        </div>
-                                    )}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Padding (px)</label><input type="number" value={launcherListStyle.padding || 0} onChange={e => updateLauncherListStyle({ padding: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
-                                        <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Border Radius (px)</label><input type="number" value={launcherListStyle.borderRadius || 0} onChange={e => updateLauncherListStyle({ borderRadius: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
+                                    <textarea placeholder="AI Image Prompt..." value={projectData.launcherSettings.backgroundImagePrompt} onChange={e => updateLauncherSettings({ backgroundImagePrompt: e.target.value })} rows={2} className="mt-2 w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                                        <button onClick={() => handleGenerateImage(projectData.launcherSettings.backgroundImagePrompt!, (b64) => updateLauncherSettings({ backgroundImageBase64: `data:image/jpeg;base64,${b64}` }))} disabled={isGenerating === 'image' || !projectData.launcherSettings.backgroundImagePrompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating === 'image' ? "Generating..." : "Generate"}</button>
+                                        <button onClick={() => launcherBgInputRef.current?.click()} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Image</button>
+                                        <input type="file" accept="image/*" ref={launcherBgInputRef} onChange={e => handleLauncherBgUpload(e.target.files?.[0] ?? null)} className="hidden"/>
+                                        <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>
                                     </div>
-                                </CollapsibleSection>
-                                 <CollapsibleSection title="Game Card Display">
-                                    <div className="space-y-6">
-                                        <StyleRadio label="Layout" name="gamelist-layout" value={projectData.launcherSettings.gameListLayout || 'grid'} onChange={(e) => updateLauncherSettings({ gameListLayout: e.target.value as GameListLayout })} options={[{value: 'grid', label: 'Grid'}, {value: 'list', label: 'List'}]} help="Choose how the list of games is displayed in the launcher." />
-                                        
-                                        <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Image & Interaction</h4>
-                                            <StyleRadio label="Image Display" name="image-display" value={launcherCardStyle.imageDisplay || 'single'} onChange={(e) => updateLauncherCardStyle({ imageDisplay: e.target.value as 'single' | 'slider' })} options={[{value: 'single', label: 'Single Image'}, {value: 'slider', label: 'Image Slider'}]} help="Show a static image or an interactive image carousel for each game." />
-                                            <StyleSelect label="Image Aspect Ratio" value={launcherCardStyle.imageAspectRatio || '16/9'} onChange={e => updateLauncherCardStyle({ imageAspectRatio: e.target.value as GameCardStyle['imageAspectRatio']})} help="The shape of the preview image for each game. 'Auto' uses a fixed height.">
-                                                <option value="16/9">16:9 (Widescreen)</option><option value="4/3">4:3 (Standard)</option><option value="1/1">1:1 (Square)</option><option value="auto">Auto (Fixed Height)</option>
-                                            </StyleSelect>
-                                            <StyleSelect label="Hover Effect" value={launcherCardStyle.hoverEffect || 'lift'} onChange={e => updateLauncherCardStyle({ hoverEffect: e.target.value as GameCardStyle['hoverEffect'] })} help="The visual effect when the user hovers their mouse over a game card.">
-                                                <option value="lift">Glow & Ring</option><option value="glow">Glow Only</option><option value="none">None</option>
-                                            </StyleSelect>
-                                        </div>
-                                        
-                                        <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Header Content</h4>
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                     <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Header Text</label>
-                                                     <HelpTooltip title="Card Header Text" content="The main text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
-                                                </div>
-                                                <textarea value={launcherCardStyle.headerText || ''} onChange={(e) => updateLauncherCardStyle({ headerText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
+                                </div>
+                            </CollapsibleSection>
+                             <CollapsibleSection title="Game List Container">
+                                <StyleRadio label="Background Type" name="gamelist-bg-type" value={launcherListStyle.backgroundType || 'transparent'} onChange={(e) => updateLauncherListStyle({ backgroundType: e.target.value as GameListBackgroundType })} options={[{value: 'transparent', label: 'Transparent'}, {value: 'solid', label: 'Solid'}, {value: 'gradient', label: 'Gradient'}]} />
+                                {launcherListStyle.backgroundType === 'solid' && (
+                                    <ColorInput label="Background Color" value={launcherListStyle.backgroundColor1 || '#1f293780'} onChange={val => updateLauncherListStyle({ backgroundColor1: val })} />
+                                )}
+                                {launcherListStyle.backgroundType === 'gradient' && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <ColorInput label="Gradient Color 1" value={launcherListStyle.backgroundColor1 || '#1f293780'} onChange={val => updateLauncherListStyle({ backgroundColor1: val })} />
+                                        <ColorInput label="Gradient Color 2" value={launcherListStyle.backgroundColor2 || '#11182740'} onChange={val => updateLauncherListStyle({ backgroundColor2: val })} />
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Padding (px)</label><input type="number" value={launcherListStyle.padding || 0} onChange={e => updateLauncherListStyle({ padding: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
+                                    <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Border Radius (px)</label><input type="number" value={launcherListStyle.borderRadius || 0} onChange={e => updateLauncherListStyle({ borderRadius: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
+                                </div>
+                            </CollapsibleSection>
+                             <CollapsibleSection title="Game Card Display">
+                                <div className="space-y-6">
+                                    <StyleRadio label="Layout" name="gamelist-layout" value={projectData.launcherSettings.gameListLayout || 'grid'} onChange={(e) => updateLauncherSettings({ gameListLayout: e.target.value as GameListLayout })} options={[{value: 'grid', label: 'Grid'}, {value: 'list', label: 'List'}]} help="Choose how the list of games is displayed in the launcher." />
+                                    
+                                    <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Image & Interaction</h4>
+                                        <StyleRadio label="Image Display" name="image-display" value={launcherCardStyle.imageDisplay || 'single'} onChange={(e) => updateLauncherCardStyle({ imageDisplay: e.target.value as 'single' | 'slider' })} options={[{value: 'single', label: 'Single Image'}, {value: 'slider', label: 'Image Slider'}]} help="Show a static image or an interactive image carousel for each game." />
+                                        <StyleSelect label="Image Aspect Ratio" value={launcherCardStyle.imageAspectRatio || '16/9'} onChange={e => updateLauncherCardStyle({ imageAspectRatio: e.target.value as GameCardStyle['imageAspectRatio']})} help="The shape of the preview image for each game. 'Auto' uses a fixed height.">
+                                            <option value="16/9">16:9 (Widescreen)</option><option value="4/3">4:3 (Standard)</option><option value="1/1">1:1 (Square)</option><option value="auto">Auto (Fixed Height)</option>
+                                        </StyleSelect>
+                                        <StyleSelect label="Hover Effect" value={launcherCardStyle.hoverEffect || 'lift'} onChange={e => updateLauncherCardStyle({ hoverEffect: e.target.value as GameCardStyle['hoverEffect'] })} help="The visual effect when the user hovers their mouse over a game card.">
+                                            <option value="lift">Glow & Ring</option><option value="glow">Glow Only</option><option value="none">None</option>
+                                        </StyleSelect>
+                                    </div>
+                                    
+                                    <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Header Content</h4>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                 <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Header Text</label>
+                                                 <HelpTooltip title="Card Header Text" content="The main text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
                                             </div>
-                                            <TextStyleEditor value={launcherCardStyle.headerStyle!} onChange={headerStyle => updateLauncherCardStyle({ headerStyle })}/>
+                                            <textarea value={launcherCardStyle.headerText || ''} onChange={(e) => updateLauncherCardStyle({ headerText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
                                         </div>
+                                        <TextStyleEditor value={launcherCardStyle.headerStyle!} onChange={headerStyle => updateLauncherCardStyle({ headerStyle })}/>
+                                    </div>
 
-                                         <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Body Content</h4>
-                                            <div>
-                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Body Text</label>
-                                                     <HelpTooltip title="Card Body Text" content="The secondary text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
-                                                </div>
-                                                <textarea value={launcherCardStyle.bodyText || ''} onChange={(e) => updateLauncherCardStyle({ bodyText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
+                                     <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Body Content</h4>
+                                        <div>
+                                             <div className="flex items-center gap-2 mb-1">
+                                                <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Body Text</label>
+                                                 <HelpTooltip title="Card Body Text" content="The secondary text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
                                             </div>
-                                            <TextStyleEditor value={launcherCardStyle.bodyStyle!} onChange={bodyStyle => updateLauncherCardStyle({ bodyStyle })}/>
+                                            <textarea value={launcherCardStyle.bodyText || ''} onChange={(e) => updateLauncherCardStyle({ bodyText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
                                         </div>
+                                        <TextStyleEditor value={launcherCardStyle.bodyStyle!} onChange={bodyStyle => updateLauncherCardStyle({ bodyStyle })}/>
+                                    </div>
 
-                                         <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">General Card Style</h4>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <ColorInput label="Background" value={launcherCardStyle.backgroundColor || '#1f293780'} onChange={val => updateLauncherCardStyle({ backgroundColor: val })} />
-                                                <ColorInput label="Border" value={launcherCardStyle.borderColor || '#4b5563'} onChange={val => updateLauncherCardStyle({ borderColor: val })} />
-                                                <ColorInput label="Button BG" value={launcherCardStyle.buttonColor || '#22d3ee'} onChange={val => updateLauncherCardStyle({ buttonColor: val })} />
-                                                <ColorInput label="Button Text" value={launcherCardStyle.buttonTextColor || '#111827'} onChange={val => updateLauncherCardStyle({ buttonTextColor: val })} />
-                                            </div>
+                                     <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">General Card Style</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <ColorInput label="Background" value={launcherCardStyle.backgroundColor || '#1f293780'} onChange={val => updateLauncherCardStyle({ backgroundColor: val })} />
+                                            <ColorInput label="Border" value={launcherCardStyle.borderColor || '#4b5563'} onChange={val => updateLauncherCardStyle({ borderColor: val })} />
+                                            <ColorInput label="Button BG" value={launcherCardStyle.buttonColor || '#22d3ee'} onChange={val => updateLauncherCardStyle({ buttonColor: val })} />
+                                            <ColorInput label="Button Text" value={launcherCardStyle.buttonTextColor || '#111827'} onChange={val => updateLauncherCardStyle({ buttonTextColor: val })} />
                                         </div>
                                     </div>
-                                </CollapsibleSection>
-                               <CollapsibleSection title="Company News">
-                                   <NewsListEditor news={projectData.launcherSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteLauncherNewsItem} />
-                               </CollapsibleSection>
-                             </div>
-                        </div>
-                        <div className="hidden xl:block p-6 h-full"><LauncherPreview projectData={projectData} /></div>
+                                </div>
+                            </CollapsibleSection>
+                           <CollapsibleSection title="Company News">
+                               <NewsListEditor news={projectData.launcherSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteLauncherNewsItem} />
+                           </CollapsibleSection>
+                         </div>
                     </div>
                 )}
                 {topLevelTab === 'games' && (
@@ -801,6 +1080,9 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                         <p className="text-sm text-[var(--text-secondary)]">{game.colonyName}</p>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <button onClick={() => onStartSimulation(game)} className="flex items-center gap-2 bg-[var(--bg-active)]/20 hover:bg-[var(--bg-active)]/40 text-[var(--text-accent)] font-semibold py-2 px-4 rounded transition duration-300">
+                                            <PlayIcon className="w-4 h-4" /> Simulate
+                                        </button>
                                         <button onClick={() => setSelectedGameId(game.id)} className="flex items-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold py-2 px-4 rounded transition duration-300">
                                             <PencilIcon className="w-4 h-4" /> Edit
                                         </button>

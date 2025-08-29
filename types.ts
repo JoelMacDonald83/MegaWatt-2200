@@ -148,7 +148,9 @@ export interface PlayerChoice {
   choiceType: 'static' | 'dynamic_from_template';
   staticOptions?: ChoiceOption[];
   dynamicConfig?: {
-      sourceTemplateId: string;
+      sourceTemplateIds: string[]; // Find entities based on ANY of these blueprints (OR logic)
+      requiredComponentIds?: string[]; // Further filter to entities that have ALL of these components (AND logic)
+      excludedComponentIds?: string[]; // Further filter to entities that have NONE of these components
       optionTemplate: {
           text: string; // Placeholders like {entity.name} will be used here.
       };
@@ -157,6 +159,13 @@ export interface PlayerChoice {
       filterConditions?: Condition[];
   };
   nextChoiceId?: string | null; // If no prompt/options, this is used to continue
+}
+
+export interface ChoiceChunk {
+  id: string;
+  name: string;
+  description: string;
+  choiceIds: string[];
 }
 
 export interface NewsItem {
@@ -197,7 +206,8 @@ export interface GameData {
   gameTitle: string;
   colonyName: string;
   startChoiceId: string | null;
-  choices: PlayerChoice[];
+  allChoices: PlayerChoice[];
+  choiceChunks: ChoiceChunk[];
   templates: Template[];
   entities: Entity[];
   menuSettings: GameMenuSettings;
@@ -266,4 +276,12 @@ export type EditorFontSize = 'small' | 'medium' | 'large';
 export interface EditorSettings {
   theme: EditorTheme;
   fontSize: EditorFontSize;
+}
+
+// --- Simulation-specific types ---
+export interface SimSaveSlot {
+    id: string; // timestamp
+    name: string;
+    date: string;
+    data: GameData;
 }

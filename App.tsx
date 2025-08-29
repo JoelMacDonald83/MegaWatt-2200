@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
-import { MegaWattGame as LauncherFlow } from './screens/MegaWattGame';
-import type { GameData, ChoiceOutcome, PhoenixProject } from './types';
+import { MegaWattGame } from './screens/MegaWattGame';
+import type { GameData, ChoiceOutcome, PhoenixProject, SimSaveSlot } from './types';
 import { debugService } from './services/debugService';
 import { HistoryService } from './services/historyService';
 import { ArrowUturnLeftIcon } from './components/icons/ArrowUturnLeftIcon';
@@ -11,7 +11,8 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { Cog6ToothIcon } from './components/icons/Cog6ToothIcon';
 import { SettingsModal } from './components/SettingsModal';
 import { GlobalStyles } from './components/GlobalStyles';
-
+import { SimulationScreen } from './screens/SimulationScreen';
+import { SimulationHeader } from './components/SimulationHeader';
 
 // Define IDs for consistent referencing
 const TEMPLATE_CHARACTER_ID = 'template_char_1';
@@ -75,7 +76,15 @@ const initialGameData: GameData = {
     ],
     credits: 'Created with the Phoenix Editor for MegaWatt 2200.',
   },
-  choices: [
+  choiceChunks: [
+    {
+      id: `chunk_intro_${Date.now()}`,
+      name: 'Introduction',
+      description: 'The opening scenes and initial player choices.',
+      choiceIds: [CHOICE_INTRO_1, CHOICE_INTRO_2, CHOICE_FIRST_PRIORITY_ID, CHOICE_ASSIGN_OPERATOR_ID],
+    }
+  ],
+  allChoices: [
     {
       id: CHOICE_INTRO_1,
       name: 'Intro Scene 1',
@@ -173,7 +182,7 @@ const initialGameData: GameData = {
       prompt: 'Who will you assign?',
       choiceType: 'dynamic_from_template',
       dynamicConfig: {
-        sourceTemplateId: TEMPLATE_CHARACTER_ID,
+        sourceTemplateIds: [TEMPLATE_CHARACTER_ID],
         optionTemplate: {
           text: '{entity.name}',
         },
@@ -351,44 +360,66 @@ const initialProject: PhoenixProject = {
 
 
 const AppContent: React.FC = () => {
-  const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
+  const [viewMode, setViewMode] = useState<'editor' | 'launcher' | 'simulation'>('editor');
   
-  const historyService = useMemo(() => new HistoryService<PhoenixProject>(initialProject), []);
+  const editorHistory = useMemo(() => new HistoryService<PhoenixProject>(initialProject), []);
+  const [projectData, setProjectData] = useState<PhoenixProject>(() => editorHistory.current()!);
+  const [canUndoEditor, setCanUndoEditor] = useState(editorHistory.canUndo());
+  const [canRedoEditor, setCanRedoEditor] = useState(editorHistory.canRedo());
   
-  const [projectData, setProjectData] = useState<PhoenixProject>(() => historyService.current()!);
-  const [canUndo, setCanUndo] = useState(historyService.canUndo());
-  const [canRedo, setCanRedo] = useState(historyService.canRedo());
+  // State for simulation
+  const [simulationProject, setSimulationProject] = useState<GameData | null>(null);
+  const simHistory = useMemo(() => simulationProject ? new HistoryService<GameData>(simulationProject) : null, [simulationProject]);
+  const [canUndoSim, setCanUndoSim] = useState(false);
+  const [canRedoSim, setCanRedoSim] = useState(false);
+
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
+  // Subscribe to Editor History
   useEffect(() => {
     debugService.log("App: Component mounted", { initialProject });
-    
-    const unsubscribe = historyService.subscribe(() => {
-        const currentData = historyService.current();
-        if (currentData) {
-            setProjectData(currentData);
-        }
-        setCanUndo(historyService.canUndo());
-        setCanRedo(historyService.canRedo());
-        debugService.log("App: History update received from service", { canUndo: historyService.canUndo(), canRedo: historyService.canRedo() });
+    const unsubscribe = editorHistory.subscribe(() => {
+        const currentData = editorHistory.current();
+        if (currentData) setProjectData(currentData);
+        setCanUndoEditor(editorHistory.canUndo());
+        setCanRedoEditor(editorHistory.canRedo());
+        debugService.log("App: Editor History update received", { canUndo: editorHistory.canUndo(), canRedo: editorHistory.canRedo() });
     });
-
     return unsubscribe;
-  }, [historyService]);
+  }, [editorHistory]);
+
+  // Subscribe to Simulation History
+  useEffect(() => {
+      if (!simHistory) return;
+      const unsubscribe = simHistory.subscribe(() => {
+          const currentSimData = simHistory.current();
+          if (currentSimData) {
+              // This is tricky. We need to update the state that the SimulationScreen is looking at.
+              // Direct state update from here is better than passing setSimulationProject down.
+              setSimulationProject(currentSimData);
+          }
+          setCanUndoSim(simHistory.canUndo());
+          setCanRedoSim(simHistory.canRedo());
+      });
+      return unsubscribe;
+  }, [simHistory]);
   
-  const handleUndo = useCallback(() => historyService.undo(), [historyService]);
-  const handleRedo = useCallback(() => historyService.redo(), [historyService]);
+  const handleUndo = useCallback(() => {
+      if (viewMode === 'simulation' && simHistory) simHistory.undo();
+      else editorHistory.undo();
+  }, [viewMode, editorHistory, simHistory]);
+  
+  const handleRedo = useCallback(() => {
+      if (viewMode === 'simulation' && simHistory) simHistory.redo();
+      else editorHistory.redo();
+  }, [viewMode, editorHistory, simHistory]);
 
   useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
           if ((event.ctrlKey || event.metaKey)) {
               if (event.key === 'z') {
                   event.preventDefault();
-                  if (event.shiftKey) {
-                      handleRedo();
-                  } else {
-                      handleUndo();
-                  }
+                  if (event.shiftKey) handleRedo(); else handleUndo();
               } else if (event.key === 'y') {
                   event.preventDefault();
                   handleRedo();
@@ -396,79 +427,70 @@ const AppContent: React.FC = () => {
           }
       };
       window.addEventListener('keydown', handleKeyDown);
-      return () => {
-          window.removeEventListener('keydown', handleKeyDown);
-      };
+      return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
   const commitChange = useCallback((newProjectData: PhoenixProject) => {
-      historyService.push(newProjectData);
-  }, [historyService]);
+      editorHistory.push(newProjectData);
+  }, [editorHistory]);
 
-  useEffect(() => {
-    debugService.log("App: View mode changed", { viewMode });
-  }, [viewMode]);
-
-  const handleChoiceOutcomes = (gameId: string, outcomes: ChoiceOutcome[]) => {
-    debugService.log("App: handleChoiceOutcomes triggered from game preview", { gameId, outcomes });
-    
-    let currentProject = historyService.current();
-    if (!currentProject) return;
-
-    const gameIndex = currentProject.games.findIndex(g => g.id === gameId);
-    if (gameIndex === -1) {
-      debugService.log("App: handleChoiceOutcomes error: game not found", { gameId });
-      return;
-    }
-    
-    let gameToUpdate = { ...currentProject.games[gameIndex] };
-
-    debugService.log("App: gameData state before outcome", { gameData: gameToUpdate });
-
-    for (const outcome of outcomes) {
-        let nextData: GameData;
-        if (outcome.type === 'create_entity') {
-            const newEntity = {
-                id: `entity_${Date.now()}`,
-                templateId: outcome.templateId,
-                name: outcome.name,
-                attributeValues: outcome.attributeValues || {},
-            };
-            nextData = {
-                ...gameToUpdate,
-                entities: [...gameToUpdate.entities, newEntity]
-            };
-        } else if (outcome.type === 'update_entity') {
-            nextData = {
-                ...gameToUpdate,
-                entities: gameToUpdate.entities.map(entity => {
-                if (entity.id === outcome.targetEntityId) {
-                    return {
-                    ...entity,
-                    attributeValues: {
-                        ...entity.attributeValues,
-                        [outcome.attributeId]: outcome.value,
-                    }
-                    };
-                }
-                return entity;
-                })
-            };
-        } else {
-            nextData = gameToUpdate;
-        }
-        gameToUpdate = nextData;
-    }
-
-    const newGames = [...currentProject.games];
-    newGames[gameIndex] = gameToUpdate;
-    const newProject = { ...currentProject, games: newGames };
-
-
-    debugService.log("App: gameData state after all outcomes", { gameData: gameToUpdate });
-    commitChange(newProject);
+  const handleStartSimulation = (game: GameData) => {
+      debugService.log("App: Starting simulation for game", { gameTitle: game.gameTitle });
+      // Deep copy to prevent mutation of editor state
+      const gameCopy = JSON.parse(JSON.stringify(game));
+      setSimulationProject(gameCopy);
+      setViewMode('simulation');
   };
 
+  const handleExitSimulation = () => {
+      debugService.log("App: Exiting simulation");
+      setSimulationProject(null);
+      setViewMode('editor');
+  };
+  
+  const handleRestartSimulation = () => {
+      if (!simulationProject) return;
+      const originalGame = projectData.games.find(g => g.id === simulationProject.id);
+      if (originalGame) {
+          debugService.log("App: Restarting simulation", { gameTitle: originalGame.gameTitle });
+          const gameCopy = JSON.parse(JSON.stringify(originalGame));
+          // This creates a new history service as well via the useMemo dependency
+          setSimulationProject(gameCopy);
+      }
+  };
+  
+  const handleLoadSimulation = (saveSlot: SimSaveSlot) => {
+      debugService.log("App: Loading simulation state from slot", { slotName: saveSlot.name });
+      const gameCopy = JSON.parse(JSON.stringify(saveSlot.data));
+      setSimulationProject(gameCopy);
+  }
+
+  const handleChoiceOutcomes = (outcomes: ChoiceOutcome[]) => {
+      if (!simHistory || !simulationProject) return;
+      debugService.log("App: Applying outcomes to simulation", { outcomes });
+      
+      let gameToUpdate = { ...simHistory.current()! };
+
+      for (const outcome of outcomes) {
+          let nextData: GameData;
+          if (outcome.type === 'create_entity') {
+              const newEntity = { id: `entity_${Date.now()}`, templateId: outcome.templateId, name: outcome.name, attributeValues: outcome.attributeValues || {} };
+              nextData = { ...gameToUpdate, entities: [...gameToUpdate.entities, newEntity] };
+          } else if (outcome.type === 'update_entity') {
+              nextData = {
+                  ...gameToUpdate,
+                  entities: gameToUpdate.entities.map(entity => 
+                      entity.id === outcome.targetEntityId ? { ...entity, attributeValues: { ...entity.attributeValues, [outcome.attributeId]: outcome.value } } : entity
+                  )
+              };
+          } else { nextData = gameToUpdate; }
+          gameToUpdate = nextData;
+      }
+
+      debugService.log("App: Pushing new simulation state after outcomes", { gameData: gameToUpdate });
+      simHistory.push(gameToUpdate);
+  };
+  
   const handleSaveProject = () => {
     debugService.log('App: Saving project', { projectData });
     const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
@@ -485,7 +507,23 @@ const AppContent: React.FC = () => {
       const loadedData = JSON.parse(jsonString);
       // Basic validation to see if it looks like a project data file
       if (loadedData.launcherSettings && loadedData.games) {
-        historyService.clearAndPush(loadedData);
+        // MIGRATION LOGIC for choice chunks
+        loadedData.games.forEach((game: GameData & { choices?: any }) => {
+            if (game.choices && !game.allChoices) {
+                debugService.log("App: Migrating old game data format to choice chunks", { gameTitle: game.gameTitle });
+                game.allChoices = game.choices;
+                delete game.choices;
+                game.choiceChunks = [{
+                    id: `chunk_migrated_${Date.now()}`,
+                    name: 'All Scenes',
+                    description: 'Scenes migrated from an older project version.',
+                    choiceIds: game.allChoices.map(c => c.id),
+                }];
+            }
+        });
+        // END MIGRATION LOGIC
+
+        editorHistory.clearAndPush(loadedData);
         debugService.log('App: Project loaded successfully', { loadedData });
         alert('Project loaded successfully!');
       } else {
@@ -500,56 +538,79 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-       <GlobalStyles />
-      <header className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 bg-[var(--bg-panel)]/70 backdrop-blur-sm border-b border-[var(--border-primary)]">
-        <div className="flex items-center gap-4">
-            <h1 className="text-[length:var(--font-size-lg)] font-bold text-[var(--text-primary)]">
-              <span className="text-[var(--text-accent-bright)]">Phoenix</span> / Editor
-            </h1>
-            <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-                <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Undo (Ctrl+Z)">
-                    <ArrowUturnLeftIcon className="w-5 h-5"/>
+      <GlobalStyles />
+      {viewMode === 'simulation' && simulationProject ? (
+          <SimulationHeader 
+            gameTitle={simulationProject.gameTitle}
+            onExit={handleExitSimulation}
+            onRestart={handleRestartSimulation}
+            onLoad={handleLoadSimulation}
+            currentSimState={simulationProject}
+            canUndo={canUndoSim}
+            canRedo={canRedoSim}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+          />
+      ) : (
+        <header className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 bg-[var(--bg-panel)]/70 backdrop-blur-sm border-b border-[var(--border-primary)]">
+          <div className="flex items-center gap-4">
+              <h1 className="text-[length:var(--font-size-lg)] font-bold text-[var(--text-primary)]">
+                <span className="text-[var(--text-accent-bright)]">Phoenix</span> / Editor
+              </h1>
+              <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+                  <button onClick={handleUndo} disabled={!canUndoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Undo (Ctrl+Z)">
+                      <ArrowUturnLeftIcon className="w-5 h-5"/>
+                  </button>
+                  <button onClick={handleRedo} disabled={!canRedoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Redo (Ctrl+Y)">
+                      <ArrowUturnRightIcon className="w-5 h-5"/>
+                  </button>
+              </div>
+          </div>
+          <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+                <button
+                  onClick={() => setViewMode('editor')}
+                  className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'editor' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                  Editor
                 </button>
-                 <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Redo (Ctrl+Y)">
-                    <ArrowUturnRightIcon className="w-5 h-5"/>
+                <button
+                  onClick={() => setViewMode('launcher')}
+                  className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'launcher' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                  Launcher
                 </button>
-            </div>
-        </div>
-        <div className="flex items-center gap-4">
-            <div className="flex items-center space-x-2 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-              <button
-                onClick={() => setViewMode('editor')}
-                className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'editor' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-              >
-                Editor
+              </div>
+              <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md transition-colors bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)]" title="Editor Settings">
+                  <Cog6ToothIcon className="w-5 h-5"/>
               </button>
-              <button
-                onClick={() => setViewMode('preview')}
-                className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-              >
-                Launcher
-              </button>
-            </div>
-             <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md transition-colors bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)]" title="Editor Settings">
-                <Cog6ToothIcon className="w-5 h-5"/>
-            </button>
-        </div>
-      </header>
+          </div>
+        </header>
+      )}
+
       <main className="h-full pt-[57px]">
-        {viewMode === 'editor' ? (
+        {viewMode === 'editor' && (
           <PhoenixEditor 
             projectData={projectData} 
             onCommitChange={commitChange} 
             onLoadProject={handleLoadProject} 
             onSaveProject={handleSaveProject}
+            onStartSimulation={handleStartSimulation}
           />
-        ) : (
-          <div className="h-full overflow-y-auto">
-            <LauncherFlow 
-              projectData={projectData} 
-              onChoiceMade={handleChoiceOutcomes}
-            />
-          </div>
+        )}
+        {viewMode === 'launcher' && (
+           <div className="h-full overflow-y-auto">
+             <MegaWattGame 
+               projectData={projectData} 
+               onChoiceMade={() => {}}
+             />
+           </div>
+        )}
+        {viewMode === 'simulation' && simulationProject && (
+          <SimulationScreen
+            gameData={simulationProject}
+            onChoiceMade={handleChoiceOutcomes}
+          />
         )}
       </main>
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />

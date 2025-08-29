@@ -1,17 +1,16 @@
 
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome } from '../../types';
+import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome, Template } from '../../types';
 import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
 import { TrashIcon } from '../../components/icons/TrashIcon';
 import { PencilIcon } from '../../components/icons/PencilIcon';
 import { ConditionEditor } from './ConditionEditor';
-import { conditionToString, outcomeToString } from '../../services/conditionEvaluator';
 import { debugService } from '../../services/debugService';
 import { OutcomeEditor } from './OutcomeEditor';
 import { PlusIcon } from '../../components/icons/PlusIcon';
 import { HelpTooltip } from '../../components/HelpTooltip';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import { ConditionDisplay, OutcomeDisplay } from '../../components/editor/LogicDisplay';
 
 
 interface ChoiceEditorProps {
@@ -35,12 +34,147 @@ type EditingOutcomeState =
   | null;
 
 
+const PlaceholderSelector: React.FC<{
+    gameData: GameData;
+    sourceTemplateIds: string[];
+    onInsert: (placeholder: string) => void;
+}> = ({ gameData, sourceTemplateIds, onInsert }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [wrapperRef]);
+
+    const placeholderGroups = useMemo(() => {
+        const groups: { groupName: string, items: { name: string, value: string }[] }[] = [];
+
+        groups.push({
+            groupName: 'General',
+            items: [{ name: 'Entity Name', value: '{entity.name}' }]
+        });
+        
+        const allAttributesByGroup = new Map<string, {name: string, value: string}[]>();
+
+        sourceTemplateIds.forEach(templateId => {
+            const template = gameData.templates.find(t => t.id === templateId);
+            if (!template) return;
+
+            let current: Template | undefined = template;
+            const hierarchy: Template[] = [];
+            while(current) {
+                hierarchy.unshift(current); // Build from top-down to handle overrides correctly
+                current = gameData.templates.find(t => t.id === current?.parentId);
+            }
+
+            const componentIds = new Set<string>();
+            const seenAttrIds = new Set<string>();
+
+            // Process hierarchy for base and inherited attributes
+            for(const t of hierarchy) {
+                const groupName = `Blueprint: ${t.name}`;
+                if (!allAttributesByGroup.has(groupName)) allAttributesByGroup.set(groupName, []);
+                
+                t.attributes.forEach(attr => {
+                    if (!seenAttrIds.has(attr.id)) {
+                        allAttributesByGroup.get(groupName)!.push({
+                            name: attr.name,
+                            value: `{entity.attributeValues.${attr.id}}`,
+                        });
+                        seenAttrIds.add(attr.id);
+                    }
+                });
+                (t.includedComponentIds || []).forEach(id => componentIds.add(id));
+            }
+            
+            // Process components
+            componentIds.forEach(compId => {
+                const component = gameData.templates.find(t => t.id === compId);
+                if (component) {
+                    const groupName = `Component: ${component.name}`;
+                    if (!allAttributesByGroup.has(groupName)) allAttributesByGroup.set(groupName, []);
+                    
+                    component.attributes.forEach(attr => {
+                        allAttributesByGroup.get(groupName)!.push({
+                            name: attr.name,
+                            value: `{entity.attributeValues.${component.id}_${attr.id}}`,
+                        });
+                    });
+                }
+            });
+        });
+        
+        allAttributesByGroup.forEach((items, groupName) => {
+            if (items.length > 0) {
+                groups.push({ groupName, items });
+            }
+        });
+
+        return groups;
+    }, [sourceTemplateIds, gameData.templates]);
+    
+    const handleSelect = (value: string) => {
+        onInsert(value);
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="relative" ref={wrapperRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(p => !p)}
+                className="w-full text-left flex items-center justify-center gap-2 mt-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300"
+            >
+                <PlusIcon className="w-4 h-4" /> Insert Placeholder
+            </button>
+            {isOpen && (
+                <div className="absolute z-10 bottom-full mb-2 w-full max-h-60 overflow-y-auto bg-[var(--bg-main)] border border-[var(--border-primary)] rounded-md shadow-lg">
+                    {placeholderGroups.length <= 1 && (!placeholderGroups[0] || placeholderGroups[0].items.length <= 1) ? (
+                        <div className="p-2 text-center text-sm text-[var(--text-tertiary)]">Select a source blueprint to see available placeholders.</div>
+                    ) : (
+                        placeholderGroups.map((group, i) => (
+                            <div key={i}>
+                                {group.items.length > 0 && (
+                                    <>
+                                        <div className="px-2 py-1 text-xs font-semibold text-[var(--text-secondary)] bg-[var(--bg-panel)] sticky top-0">{group.groupName}</div>
+                                        <ul>
+                                            {group.items.map(item => (
+                                                <li key={item.value}>
+                                                    <button onClick={() => handleSelect(item.value)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--bg-hover)]">
+                                                        {item.name}
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSave, onCancel, gameData, isNew, onGenerateImage, isGeneratingImage }) => {
     const [localChoice, setLocalChoice] = useState<PlayerChoice>(() => JSON.parse(JSON.stringify(initialChoice)));
     const [editingConditionState, setEditingConditionState] = useState<EditingConditionState>(null);
     const [editingOutcomeState, setEditingOutcomeState] = useState<EditingOutcomeState>(null);
+    const [templateToAdd, setTemplateToAdd] = useState('');
+    const [componentToAdd, setComponentToAdd] = useState('');
+    const [componentToExclude, setComponentToExclude] = useState('');
     const bgInputRef = useRef<HTMLInputElement>(null);
     const fgInputRef = useRef<HTMLInputElement>(null);
+    const optionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         debugService.log('ChoiceEditor: Component mounted or received new props.', { initialChoice, isNew });
@@ -103,7 +237,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                 newState.staticOptions = [];
             }
             if (newType === 'dynamic_from_template' && !prev.dynamicConfig) {
-                 newState.dynamicConfig = { sourceTemplateId: '', optionTemplate: { text: '{entity.name}' }, outcomeTemplates: [], filterConditions: [] };
+                 newState.dynamicConfig = { sourceTemplateIds: [], requiredComponentIds: [], excludedComponentIds: [], optionTemplate: { text: '{entity.name}' }, outcomeTemplates: [], filterConditions: [] };
             }
             debugService.log('ChoiceEditor: Choice type changed', { oldState: prev, newState });
             return newState;
@@ -279,6 +413,27 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         onCancel();
     };
 
+    const handleInsertPlaceholder = (placeholder: string) => {
+        const textarea = optionTextareaRef.current;
+        if (!textarea || !localChoice.dynamicConfig) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = localChoice.dynamicConfig.optionTemplate.text || '';
+
+        const newText = text.substring(0, start) + placeholder + text.substring(end);
+        
+        updateField('dynamicConfig', { ...localChoice.dynamicConfig, optionTemplate: { text: newText }});
+
+        // Focus and set cursor position after state update
+        setTimeout(() => {
+            textarea.focus();
+            const newCursorPos = start + placeholder.length;
+            textarea.selectionStart = newCursorPos;
+            textarea.selectionEnd = newCursorPos;
+        }, 0);
+    };
+
     const styles = useMemo(() => {
         const s = localChoice.styles || {};
         const fgs = s.foregroundImageStyles || {};
@@ -322,6 +477,25 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     const previewFgAnimationClass = `anim-fg-${styles.fg.animation}`;
     const previewFgAnimationStyle = { animationDuration: `${styles.fg.animationDuration}s`, animationDelay: `${styles.fg.animationDelay}s`};
     const previewFgAnimationKey = `fg-anim-key-${styles.fg.animation}-${styles.fg.animationDuration}-${styles.fg.animationDelay}`;
+
+    const isInteractive = localChoice.prompt !== undefined;
+
+    const nextSceneSelectOptions = useMemo(() => (
+        <>
+            <option value="">-- End of Path --</option>
+            {gameData.choiceChunks.map(chunk => (
+                <optgroup key={chunk.id} label={chunk.name}>
+                    {chunk.choiceIds
+                        .map(id => gameData.allChoices.find(c => c.id === id))
+                        .filter((c): c is PlayerChoice => c !== undefined && c.id !== localChoice.id)
+                        .map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))
+                    }
+                </optgroup>
+            ))}
+        </>
+    ), [gameData.choiceChunks, gameData.allChoices, localChoice.id]);
 
     return (
         <div className="flex-1 flex flex-col bg-[var(--bg-panel)] min-h-0">
@@ -403,211 +577,298 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                 </CollapsibleSection>
                 
                 <CollapsibleSection title="Logic & Navigation" defaultOpen={true}>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Player Prompt</label>
-                            <HelpTooltip title="Player Prompt" content="This is the question or statement presented to the player when they have to make a choice. If you leave this field blank, the scene will be treated as a linear narrative beat, and a single 'Continue' button will be shown instead of options." />
-                        </div>
-                        <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="(Optional: Leave blank for a linear scene)"/>
-                    </div>
-                    
-                    {localChoice.prompt ? (
-                        <div className="p-3 bg-[var(--bg-input)]/40 rounded-lg border border-[var(--border-primary)]">
-                            <StyleRadio 
-                                label="Choice Type"
-                                name="choiceType"
-                                value={localChoice.choiceType}
-                                onChange={handleChoiceTypeChange}
-                                options={[{value: 'static', label: 'Static Options'}, {value: 'dynamic_from_template', label: 'Dynamic Options'}]}
-                                help={"Static Choices: You write each option by hand. Use this for specific dialogue, actions, or moral dilemmas.\n\nDynamic Choices: The game generates a list of options automatically from a template (e.g., list all available characters). Use this when the available options depend on the current game state."}
-                            />
-                            
-                            {/* STATIC OPTIONS UI */}
-                            {localChoice.choiceType === 'static' && (
-                                <div className="space-y-3 mt-4">
-                                    {(localChoice.staticOptions || []).map(opt => (
-                                        <div key={opt.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md border border-[var(--border-primary)] space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex-grow mr-2">
-                                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Option Text</label>
-                                                    <input type="text" value={opt.text} onChange={e => updateStaticOption(opt.id, { text: e.target.value })} placeholder="Option Text" className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
-                                                </div>
-                                                <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-danger)] self-end mb-2"><TrashIcon className="w-4 h-4"/></button>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0 md:border-r md:pr-4">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Conditions</h4>
-                                                        <HelpTooltip title="Option Conditions" content="Conditions determine if this option is visible to the player. ALL conditions listed here must be true for the option to appear. If there are no conditions, the option is always visible." />
+                    {isInteractive ? (
+                        <div className="space-y-6">
+                             <div className="flex justify-between items-center pb-4 border-b border-[var(--border-primary)]">
+                                <p className="text-[length:var(--font-size-sm)] font-medium text-[var(--text-primary)]">
+                                    This scene presents choices to the player.
+                                </p>
+                                <button onClick={() => updateField('prompt', undefined)} className="text-[length:var(--font-size-sm)] text-[var(--text-accent)] hover:underline font-semibold">
+                                    Make Linear Scene
+                                </button>
+                            </div>
+                            <div>
+                                <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Player Prompt</label>
+                                <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                            </div>
+                            <div className="p-3 bg-[var(--bg-input)]/40 rounded-lg border border-[var(--border-primary)]">
+                                <StyleRadio 
+                                    label="Choice Type"
+                                    name="choiceType"
+                                    value={localChoice.choiceType}
+                                    onChange={handleChoiceTypeChange}
+                                    options={[{value: 'static', label: 'Static Options'}, {value: 'dynamic_from_template', label: 'Dynamic Options'}]}
+                                    help={"Static Choices: You write each option by hand. Use this for specific dialogue, actions, or moral dilemmas.\n\nDynamic Choices: The game generates a list of options automatically from a template (e.g., list all available characters). Use this when the available options depend on the current game state."}
+                                />
+                                
+                                {localChoice.choiceType === 'static' && (
+                                    <div className="space-y-3 mt-4">
+                                        {(localChoice.staticOptions || []).map(opt => (
+                                            <div key={opt.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md border border-[var(--border-primary)] space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-grow mr-2">
+                                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Option Text</label>
+                                                        <input type="text" value={opt.text} onChange={e => updateStaticOption(opt.id, { text: e.target.value })} placeholder="Option Text" className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        {(opt.conditions || []).map((cond, index) => (
-                                                            <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
-                                                                <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData)}</span>
-                                                                <div className="flex-shrink-0">
-                                                                <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: cond, conditionIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                                <button onClick={() => handleRemoveCondition('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                    <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-danger)] self-end mb-2"><TrashIcon className="w-4 h-4"/></button>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0 md:border-r md:pr-4">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Conditions</h4>
+                                                            <HelpTooltip title="Option Conditions" content="Conditions determine if this option is visible to the player. ALL conditions listed here must be true for the option to appear. If there are no conditions, the option is always visible." />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {(opt.conditions || []).map((cond, index) => (
+                                                                <div key={index} className="flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                                    <ConditionDisplay condition={cond} gameData={gameData} />
+                                                                    <div className="flex-shrink-0 flex items-center">
+                                                                    <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: cond, conditionIndex: index })} className="p-1"><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                                    <button onClick={() => handleRemoveCondition('static', index, opt.id)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
+                                                        <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Condition</button>
                                                     </div>
-                                                    <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Condition</button>
-                                                </div>
-                                                <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Outcomes</h4>
-                                                        <HelpTooltip title="Option Outcomes" content="Outcomes are the consequences of choosing this option. They are executed immediately when the player clicks the option. You can use outcomes to create new entities, update existing ones, change character stats, etc." />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        {(opt.outcomes || []).map((outcome, index) => (
-                                                             <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
-                                                                <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
-                                                                <div className="flex-shrink-0">
-                                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                                    <button onClick={() => handleRemoveOutcome('static', index, opt.id)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                    <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Outcomes</h4>
+                                                            <HelpTooltip title="Option Outcomes" content="Outcomes are the consequences of choosing this option. They are executed immediately when the player clicks the option. You can use outcomes to create new entities, update existing ones, change character stats, etc." />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {(opt.outcomes || []).map((outcome, index) => (
+                                                                 <div key={index} className="flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                                    <OutcomeDisplay outcome={outcome} gameData={gameData} />
+                                                                    <div className="flex-shrink-0 flex items-center">
+                                                                        <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: outcome, outcomeIndex: index })} className="p-1"><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                                        <button onClick={() => handleRemoveOutcome('static', index, opt.id)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
+                                                        <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
                                                     </div>
-                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                                </div>
+                                                <div>
+                                                    <StyleSelect 
+                                                        label="Next Scene" 
+                                                        value={opt.nextChoiceId || ''} 
+                                                        onChange={e => updateStaticOption(opt.id, { nextChoiceId: e.target.value || null })}
+                                                        help="The scene that will be shown after the player makes this choice and its outcomes are executed. If left as '-- End of Path --', this choice concludes this branch of the story."
+                                                    >
+                                                        {nextSceneSelectOptions}
+                                                    </StyleSelect>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <StyleSelect 
-                                                    label="Next Scene" 
-                                                    value={opt.nextChoiceId || ''} 
-                                                    onChange={e => updateStaticOption(opt.id, { nextChoiceId: e.target.value || null })}
-                                                    help="The scene that will be shown after the player makes this choice and its outcomes are executed. If left as '-- End of Path --', this choice concludes this branch of the story."
-                                                >
-                                                    <option value="">-- End of Path --</option>
-                                                    {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                                </StyleSelect>
+                                        ))}
+                                        <button onClick={addStaticOption} className="mt-4 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Static Option</button>
+                                    </div>
+                                )}
+
+                                {localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig && (
+                                    <div className="mt-4 space-y-6">
+                                        
+                                        <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                            <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">1. Find Entities</h4>
+                                            <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                                Create one choice option for each entity that matches the criteria below.
+                                            </p>
+                                            
+                                            <div className="space-y-4">
+                                                {/* Source Blueprints (OR) */}
+                                                <div>
+                                                     <div className="flex items-center gap-2 mb-2">
+                                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Find entities based on ANY of these blueprints:</label>
+                                                        <HelpTooltip title="Source Blueprints" content="Select one or more blueprints. The system will find all entities that are based on ANY of the blueprints in this list (OR logic)." />
+                                                    </div>
+                                                    <div className="space-y-2 mb-2">
+                                                        {(localChoice.dynamicConfig.sourceTemplateIds || []).map(id => {
+                                                            const template = gameData.templates.find(t => t.id === id);
+                                                            return template ? (
+                                                                <div key={id} className="bg-[var(--bg-panel)] p-2 rounded-md flex justify-between items-center text-sm">
+                                                                    <span className="text-[var(--text-primary)] font-medium">{template.name}</span>
+                                                                    <button onClick={() => updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateIds: localChoice.dynamicConfig.sourceTemplateIds.filter(tid => tid !== id)})} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                </div>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <select value={templateToAdd} onChange={e => setTemplateToAdd(e.target.value)} className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]">
+                                                            <option value="">-- Select a blueprint to add --</option>
+                                                            {gameData.templates.filter(t => !t.isComponent && !localChoice.dynamicConfig.sourceTemplateIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                        <button onClick={() => { if(templateToAdd) { updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateIds: [...localChoice.dynamicConfig.sourceTemplateIds, templateToAdd]}); setTemplateToAdd(''); } }} disabled={!templateToAdd} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">Add</button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Required Components (AND) */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AND must have ALL of these components:</label>
+                                                        <HelpTooltip title="Required Components" content="Further filter the list. An entity will only be included if its blueprint (or any of its parents) includes ALL of the components listed here (AND logic)." />
+                                                    </div>
+                                                     <div className="space-y-2 mb-2">
+                                                        {(localChoice.dynamicConfig.requiredComponentIds || []).map(id => {
+                                                            const component = gameData.templates.find(t => t.id === id);
+                                                            return component ? (
+                                                                <div key={id} className="bg-[var(--bg-panel)] p-2 rounded-md flex justify-between items-center text-sm">
+                                                                    <span className="text-[var(--text-primary)] font-medium">{component.name}</span>
+                                                                    <button onClick={() => updateField('dynamicConfig', { ...localChoice.dynamicConfig, requiredComponentIds: (localChoice.dynamicConfig.requiredComponentIds || []).filter(cid => cid !== id)})} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                </div>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <select value={componentToAdd} onChange={e => setComponentToAdd(e.target.value)} className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]">
+                                                            <option value="">-- Select a component to require --</option>
+                                                            {gameData.templates.filter(t => t.isComponent && !(localChoice.dynamicConfig.requiredComponentIds || []).includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                        <button onClick={() => { if(componentToAdd) { updateField('dynamicConfig', { ...localChoice.dynamicConfig, requiredComponentIds: [...(localChoice.dynamicConfig.requiredComponentIds || []), componentToAdd]}); setComponentToAdd(''); } }} disabled={!componentToAdd} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">Add</button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Excluded Components (AND) */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AND must NOT have any of these components:</label>
+                                                        <HelpTooltip title="Excluded Components" content="Further filter the list. An entity will be excluded if its blueprint (or any of its parents) includes ANY of the components listed here." />
+                                                    </div>
+                                                     <div className="space-y-2 mb-2">
+                                                        {(localChoice.dynamicConfig.excludedComponentIds || []).map(id => {
+                                                            const component = gameData.templates.find(t => t.id === id);
+                                                            return component ? (
+                                                                <div key={id} className="bg-[var(--bg-panel)] p-2 rounded-md flex justify-between items-center text-sm">
+                                                                    <span className="text-[var(--text-primary)] font-medium">{component.name}</span>
+                                                                    <button onClick={() => updateField('dynamicConfig', { ...localChoice.dynamicConfig, excludedComponentIds: (localChoice.dynamicConfig.excludedComponentIds || []).filter(cid => cid !== id)})} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                                </div>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <select value={componentToExclude} onChange={e => setComponentToExclude(e.target.value)} className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]">
+                                                            <option value="">-- Select a component to exclude --</option>
+                                                            {gameData.templates.filter(t => t.isComponent && !(localChoice.dynamicConfig.excludedComponentIds || []).includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                        <button onClick={() => { if(componentToExclude) { updateField('dynamicConfig', { ...localChoice.dynamicConfig, excludedComponentIds: [...(localChoice.dynamicConfig.excludedComponentIds || []), componentToExclude]}); setComponentToExclude(''); } }} disabled={!componentToExclude} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">Add</button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
-                                    <button onClick={addStaticOption} className="mt-4 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Static Option</button>
-                                </div>
-                            )}
+                                        
+                                        <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                 <h4 className="font-semibold text-lg text-[var(--text-primary)]">2. Filter The List <span className="text-sm font-normal text-[var(--text-secondary)]">(Optional)</span></h4>
+                                                 <HelpTooltip title="Dynamic Option Filters" content="Add conditions here to filter which entities from the source template will be turned into options. For example, you could filter to only show 'Character' entities that have the 'Pilot' role." />
+                                            </div>
+                                            <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                                Only show options if the source entity meets these conditions.
+                                            </p>
+                                            <div className="space-y-1">
+                                                {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
+                                                    <div key={index} className="flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                        <ConditionDisplay condition={cond} gameData={gameData} isFilter={true} />
+                                                        <div className="flex-shrink-0 flex items-center">
+                                                        <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: cond, conditionIndex: index })} className="p-1"><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                        <button onClick={() => handleRemoveCondition('dynamic', index)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
+                                                <PlusIcon className="w-4 h-4"/> Add Filter
+                                            </button>
+                                        </div>
 
-                            {/* DYNAMIC OPTIONS UI */}
-                            {localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig && (
-                                <div className="mt-4 space-y-6">
-                                    {/* Step 1 */}
-                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
-                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">1. Find Entities</h4>
-                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
-                                            First, tell the system what kind of entities to look for. It will create one choice option for each entity it finds.
-                                        </p>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[var(--text-secondary)] text-[length:var(--font-size-sm)]">Find all entities based on the</span>
-                                            <select 
-                                                value={localChoice.dynamicConfig.sourceTemplateId}
-                                                onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateId: e.target.value })}
-                                                className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]"
+                                        <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                            <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">3. Display Options to Player</h4>
+                                            <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                                For each found entity, show the player an option with this text:
+                                            </p>
+                                            <div className="relative">
+                                                <textarea
+                                                    ref={optionTextareaRef}
+                                                    rows={3}
+                                                    value={localChoice.dynamicConfig.optionTemplate.text}
+                                                    onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, optionTemplate: { text: e.target.value }})}
+                                                    className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"
+                                                />
+                                                <PlaceholderSelector
+                                                    gameData={gameData}
+                                                    sourceTemplateIds={localChoice.dynamicConfig.sourceTemplateIds}
+                                                    onInsert={handleInsertPlaceholder}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                             <div className="flex items-center gap-2 mb-2">
+                                                <h4 className="font-semibold text-lg text-[var(--text-primary)]">4. Define Outcomes</h4>
+                                                <HelpTooltip title="Dynamic Outcome Templates" content="Define the outcomes that will happen when a player picks ANY of the generated options. You can use special placeholders like '<The Chosen Entity>' to refer to the entity the player selected." />
+                                            </div>
+                                            <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                                When the player chooses <em className="text-[var(--text-primary)]">any</em> of these generated options, the following will happen:
+                                            </p>
+                                            <div className="space-y-1">
+                                                {(localChoice.dynamicConfig.outcomeTemplates || []).map((outcome, index) => (
+                                                    <div key={index} className="flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                        <OutcomeDisplay outcome={outcome} gameData={gameData} isDynamicContext={true} />
+                                                        <div className="flex-shrink-0 flex items-center">
+                                                        <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: outcome, outcomeIndex: index })} className="p-1"><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                        <button onClick={() => handleRemoveOutcome('dynamic', index)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
+                                                <PlusIcon className="w-4 h-4"/> Add Outcome
+                                            </button>
+                                        </div>
+
+                                        <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                            <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">5. Go to Next Scene</h4>
+                                            <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                                After the player makes their choice, which scene should come next?
+                                            </p>
+                                            <StyleSelect 
+                                                label="Next Scene"
+                                                value={localChoice.dynamicConfig.nextChoiceId || ''}
+                                                onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, nextChoiceId: e.target.value || null })}
+                                                help="The scene that will be shown after the player makes a dynamic choice."
                                             >
-                                                <option value="">-- Select a Blueprint --</option>
-                                                {gameData.templates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                            </select>
-                                            <span className="text-[var(--text-secondary)] text-[length:var(--font-size-sm)]">blueprint.</span>
+                                                {nextSceneSelectOptions}
+                                            </StyleSelect>
                                         </div>
                                     </div>
-                                    
-                                    {/* Step 2 */}
-                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
-                                        <div className="flex items-center gap-2 mb-2">
-                                             <h4 className="font-semibold text-lg text-[var(--text-primary)]">2. Filter The List <span className="text-sm font-normal text-[var(--text-secondary)]">(Optional)</span></h4>
-                                             <HelpTooltip title="Dynamic Option Filters" content="Add conditions here to filter which entities from the source template will be turned into options. For example, you could filter to only show 'Character' entities that have the 'Pilot' role." />
-                                        </div>
-                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
-                                            Only show options if the source entity meets these conditions.
-                                        </p>
-                                        <div className="space-y-1">
-                                            {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
-                                                <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
-                                                    <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData, true)}</span>
-                                                    <div className="flex-shrink-0">
-                                                    <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: cond, conditionIndex: index })}><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                    <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
-                                            <PlusIcon className="w-4 h-4"/> Add Filter
-                                        </button>
-                                    </div>
-
-                                    {/* Step 3 */}
-                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
-                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">3. Display Options to Player</h4>
-                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
-                                            For each found entity, show the player an option with this text:
-                                        </p>
-                                        <input 
-                                            type="text" 
-                                            value={localChoice.dynamicConfig.optionTemplate.text}
-                                            onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, optionTemplate: { text: e.target.value }})}
-                                            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
-                                        <p className="text-xs text-[var(--text-tertiary)] mt-1">
-                                            Use placeholders like <code className="bg-[var(--bg-main)] px-1 rounded">{'{entity.name}'}</code> or <code className="bg-[var(--bg-main)] px-1 rounded">{'{entity.attributeValues.some_attr_id}'}</code> to insert data.
-                                        </p>
-                                    </div>
-
-                                    {/* Step 4 */}
-                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
-                                         <div className="flex items-center gap-2 mb-2">
-                                            <h4 className="font-semibold text-lg text-[var(--text-primary)]">4. Define Outcomes</h4>
-                                            <HelpTooltip title="Dynamic Outcome Templates" content="Define the outcomes that will happen when a player picks ANY of the generated options. You can use special placeholders like '<The Chosen Entity>' to refer to the entity the player selected." />
-                                        </div>
-                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
-                                            When the player chooses <em className="text-[var(--text-primary)]">any</em> of these generated options, the following will happen:
-                                        </p>
-                                        <div className="space-y-1">
-                                            {(localChoice.dynamicConfig.outcomeTemplates || []).map((outcome, index) => (
-                                                <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
-                                                    <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
-                                                    <div className="flex-shrink-0">
-                                                    <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                    <button onClick={() => handleRemoveOutcome('dynamic', index)}><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
-                                            <PlusIcon className="w-4 h-4"/> Add Outcome
-                                        </button>
-                                    </div>
-
-                                    {/* Step 5 */}
-                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
-                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">5. Go to Next Scene</h4>
-                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
-                                            After the player makes their choice, which scene should come next?
-                                        </p>
-                                        <StyleSelect 
-                                            label="Next Scene"
-                                            value={localChoice.dynamicConfig.nextChoiceId || ''}
-                                            onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, nextChoiceId: e.target.value || null })}
-                                            help="The scene that will be shown after the player makes a dynamic choice."
-                                        >
-                                            <option value="">-- End of Path --</option>
-                                            {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                        </StyleSelect>
-                                    </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     ) : (
-                        <div>
-                            <StyleSelect 
-                                label="Next Scene (Linear)" 
-                                value={localChoice.nextChoiceId || ''} 
-                                onChange={e => updateField('nextChoiceId', e.target.value || null)}
-                                help="Since there is no player prompt, this scene will automatically transition to the selected scene when the player clicks 'Continue'."
-                            >
-                                <option value="">-- End of Path --</option>
-                                {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </StyleSelect>
+                        <div className="space-y-4">
+                            <div className="flex flex-col items-start gap-3 p-4 bg-[var(--bg-input)]/40 rounded-lg border border-[var(--border-primary)]">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-[length:var(--font-size-sm)] font-medium text-[var(--text-primary)]">
+                                        This is a linear scene with no player choices.
+                                    </p>
+                                    <HelpTooltip title="Linear Scene" content="A linear scene displays text and then automatically proceeds to the 'Next Scene' when the player clicks 'Continue'. Use this for story exposition or transitions."/>
+                                </div>
+                                <button 
+                                    onClick={() => updateField('prompt', '')} 
+                                    className="bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2 text-sm"
+                                >
+                                    <PlusIcon className="w-4 h-4"/>Add Choices
+                                </button>
+                            </div>
+                            <div className="pt-4 border-t border-[var(--border-primary)]">
+                                <StyleSelect 
+                                    label="Next Scene" 
+                                    value={localChoice.nextChoiceId || ''} 
+                                    onChange={e => updateField('nextChoiceId', e.target.value || null)}
+                                    help="The scene that will be shown after the player clicks 'Continue'."
+                                >
+                                    {nextSceneSelectOptions}
+                                </StyleSelect>
+                            </div>
                         </div>
                     )}
                 </CollapsibleSection>
