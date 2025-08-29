@@ -326,10 +326,10 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     return (
         <div className="flex-1 flex flex-col bg-[var(--bg-panel)] min-h-0">
             <header className="p-4 border-b border-[var(--border-primary)]">
-                <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{isNew ? 'Creating New Scene' : `Editing Scene: ${initialChoice.name}`}</h2>
+                <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-primary)]">{isNew ? 'Creating New Scene' : `Editing Scene: ${initialChoice.name}`}</h2>
             </header>
             <main className="flex-grow p-6 space-y-8 overflow-y-auto">
-                <CollapsibleSection title="Core Details & Background">
+                <CollapsibleSection title="Core Details & Background" defaultOpen={true}>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Name (for Editor)</label>
@@ -351,12 +351,12 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                         </div>
                         <textarea value={localChoice.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
                         <div className="flex space-x-2 mt-2">
-                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">
+                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--color-action-primary)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">
                                 {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
                             </button>
                             <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Background</button>
                             <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
-                            {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
+                            {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
                         </div>
                     </div>
                 </CollapsibleSection>
@@ -386,7 +386,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     <div className="flex space-x-2">
                         <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Foreground</button>
                         <input type="file" accept="image/*" ref={fgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'foregroundImageBase64')} className="hidden"/>
-                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
+                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
                     </div>
                     {localChoice.foregroundImageBase64 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -402,7 +402,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     )}
                 </CollapsibleSection>
                 
-                <CollapsibleSection title="Logic & Navigation">
+                <CollapsibleSection title="Logic & Navigation" defaultOpen={true}>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Player Prompt</label>
@@ -491,71 +491,109 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
 
                             {/* DYNAMIC OPTIONS UI */}
                             {localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig && (
-                                <div className="space-y-4 mt-4">
-                                    <StyleSelect 
-                                        label="Source Template" 
-                                        value={localChoice.dynamicConfig.sourceTemplateId}
-                                        onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateId: e.target.value })}
-                                        help="Select a template. The game will generate one choice option for every entity that exists from this template."
-                                    >
-                                        <option value="">-- Select Template --</option>
-                                        {gameData.templates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </StyleSelect>
-                                    <div>
-                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Option Text Template</label>
+                                <div className="mt-4 space-y-6">
+                                    {/* Step 1 */}
+                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">1. Find Entities</h4>
+                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                            First, tell the system what kind of entities to look for. It will create one choice option for each entity it finds.
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[var(--text-secondary)] text-[length:var(--font-size-sm)]">Find all entities based on the</span>
+                                            <select 
+                                                value={localChoice.dynamicConfig.sourceTemplateId}
+                                                onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, sourceTemplateId: e.target.value })}
+                                                className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]"
+                                            >
+                                                <option value="">-- Select a Blueprint --</option>
+                                                {gameData.templates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            </select>
+                                            <span className="text-[var(--text-secondary)] text-[length:var(--font-size-sm)]">blueprint.</span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Step 2 */}
+                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                        <div className="flex items-center gap-2 mb-2">
+                                             <h4 className="font-semibold text-lg text-[var(--text-primary)]">2. Filter The List <span className="text-sm font-normal text-[var(--text-secondary)]">(Optional)</span></h4>
+                                             <HelpTooltip title="Dynamic Option Filters" content="Add conditions here to filter which entities from the source template will be turned into options. For example, you could filter to only show 'Character' entities that have the 'Pilot' role." />
+                                        </div>
+                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                            Only show options if the source entity meets these conditions.
+                                        </p>
+                                        <div className="space-y-1">
+                                            {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
+                                                <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                    <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData, true)}</span>
+                                                    <div className="flex-shrink-0">
+                                                    <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: cond, conditionIndex: index })}><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                    <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
+                                            <PlusIcon className="w-4 h-4"/> Add Filter
+                                        </button>
+                                    </div>
+
+                                    {/* Step 3 */}
+                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">3. Display Options to Player</h4>
+                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                            For each found entity, show the player an option with this text:
+                                        </p>
                                         <input 
                                             type="text" 
                                             value={localChoice.dynamicConfig.optionTemplate.text}
                                             onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, optionTemplate: { text: e.target.value }})}
-                                            className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                                            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                                        <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                                            Use placeholders like <code className="bg-[var(--bg-main)] px-1 rounded">{'{entity.name}'}</code> or <code className="bg-[var(--bg-main)] px-1 rounded">{'{entity.attributeValues.some_attr_id}'}</code> to insert data.
+                                        </p>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0 md:border-r md:pr-4">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Filters</h4>
-                                                <HelpTooltip title="Dynamic Option Filters" content="Add conditions here to filter which entities from the source template will be turned into options. For example, you could filter to only show 'Character' entities that have the 'Pilot' role." />
-                                            </div>
-                                            <div className="space-y-1">
-                                                {(localChoice.dynamicConfig.filterConditions || []).map((cond, index) => (
-                                                    <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
-                                                        <span className="text-[var(--text-secondary)] truncate pr-1">{conditionToString(cond, gameData, true)}</span>
-                                                        <div className="flex-shrink-0">
-                                                        <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: cond, conditionIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                        <button onClick={() => handleRemoveCondition('dynamic', index)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Filter</button>
+
+                                    {/* Step 4 */}
+                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                         <div className="flex items-center gap-2 mb-2">
+                                            <h4 className="font-semibold text-lg text-[var(--text-primary)]">4. Define Outcomes</h4>
+                                            <HelpTooltip title="Dynamic Outcome Templates" content="Define the outcomes that will happen when a player picks ANY of the generated options. You can use special placeholders like '<The Chosen Entity>' to refer to the entity the player selected." />
                                         </div>
-                                        <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <h4 className="text-[length:var(--font-size-sm)] font-semibold text-[var(--text-secondary)]">Outcome Templates</h4>
-                                                <HelpTooltip title="Dynamic Outcome Templates" content="Define the outcomes that will happen when a player picks ANY of the generated options. You can use special placeholders like '<The Chosen Entity>' to refer to the entity the player selected." />
-                                            </div>
-                                            <div className="space-y-1">
-                                                {(localChoice.dynamicConfig.outcomeTemplates || []).map((outcome, index) => (
-                                                    <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1 rounded">
-                                                        <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
-                                                        <div className="flex-shrink-0">
-                                                        <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
-                                                        <button onClick={() => handleRemoveOutcome('dynamic', index)}><TrashIcon className="w-3 h-3 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
-                                                        </div>
+                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                            When the player chooses <em className="text-[var(--text-primary)]">any</em> of these generated options, the following will happen:
+                                        </p>
+                                        <div className="space-y-1">
+                                            {(localChoice.dynamicConfig.outcomeTemplates || []).map((outcome, index) => (
+                                                <div key={index} className="text-[length:var(--font-size-xs)] flex justify-between items-center bg-[var(--bg-panel)] p-1.5 rounded">
+                                                    <span className="text-[var(--text-secondary)] truncate pr-1">{outcomeToString(outcome, gameData)}</span>
+                                                    <div className="flex-shrink-0">
+                                                    <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: outcome, outcomeIndex: index })}><PencilIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] mx-1"/></button>
+                                                    <button onClick={() => handleRemoveOutcome('dynamic', index)}><TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"/></button>
                                                     </div>
-                                                ))}
-                                            </div>
-                                            <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                                </div>
+                                            ))}
                                         </div>
+                                        <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1 p-2 rounded hover:bg-[var(--bg-hover)]">
+                                            <PlusIcon className="w-4 h-4"/> Add Outcome
+                                        </button>
                                     </div>
-                                    <StyleSelect 
-                                        label="Next Scene"
-                                        value={localChoice.dynamicConfig.nextChoiceId || ''}
-                                        onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, nextChoiceId: e.target.value || null })}
-                                        help="The scene that will be shown after the player makes a dynamic choice."
-                                    >
-                                        <option value="">-- End of Path --</option>
-                                        {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </StyleSelect>
+
+                                    {/* Step 5 */}
+                                    <div className="p-4 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-input)]">
+                                        <h4 className="font-semibold text-lg text-[var(--text-primary)] mb-2">5. Go to Next Scene</h4>
+                                        <p className="text-[var(--text-secondary)] mb-3 text-[length:var(--font-size-sm)]">
+                                            After the player makes their choice, which scene should come next?
+                                        </p>
+                                        <StyleSelect 
+                                            label="Next Scene"
+                                            value={localChoice.dynamicConfig.nextChoiceId || ''}
+                                            onChange={e => updateField('dynamicConfig', { ...localChoice.dynamicConfig, nextChoiceId: e.target.value || null })}
+                                            help="The scene that will be shown after the player makes a dynamic choice."
+                                        >
+                                            <option value="">-- End of Path --</option>
+                                            {gameData.choices.filter(c => c.id !== localChoice.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </StyleSelect>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -574,8 +612,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                     )}
                 </CollapsibleSection>
 
-                <div>
-                    <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] mb-2">Live Preview</h4>
+                <CollapsibleSection title="Live Preview">
                     <div className="relative aspect-video w-full max-w-lg bg-[var(--bg-main)] rounded-lg border border-[var(--border-secondary)] overflow-hidden">
                         {localChoice.imageBase64 && <img src={localChoice.imageBase64} className={`absolute inset-0 w-full h-full object-cover transition-all ${previewBgEffectClass}`} />}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
@@ -606,11 +643,11 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                             </div>
                         )}
                     </div>
-                </div>
+                </CollapsibleSection>
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-[var(--border-primary)] bg-[var(--bg-panel)]/50">
                 <button onClick={handleCancelClick} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Changes</button>
+                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-[var(--color-action-primary)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Changes</button>
             </footer>
 
             {editingConditionState && (
