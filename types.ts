@@ -60,6 +60,7 @@ export interface Template {
   tags: string[];
   attributes: AttributeDefinition[];
   includedStuff?: IncludedStuff[];
+  parentId?: string;
 }
 
 export interface Entity {

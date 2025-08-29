@@ -1,8 +1,9 @@
 
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { StoryCard, PlayerChoice } from '../../types';
 import { StyleSelect, StyleNumberInput, StyleRadio } from '../../components/editor/StyleComponents';
+import { debugService } from '../../services/debugService';
 
 interface StoryCardEditorProps {
     initialCard: StoryCard;
@@ -21,49 +22,85 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
     const bgInputRef = useRef<HTMLInputElement>(null);
     const fgInputRef = useRef<HTMLInputElement>(null);
 
+    useEffect(() => {
+        debugService.log('StoryCardEditor: Component mounted or received new props.', { initialCard, isNew, isChoiceCard });
+        setLocalCard(JSON.parse(JSON.stringify(initialCard)));
+    }, [initialCard, isNew, isChoiceCard]);
+
+    const updateField = (field: keyof StoryCard, value: any) => {
+        setLocalCard(prev => {
+            const newState = { ...prev, [field]: value };
+            debugService.log('StoryCardEditor: Updating field', { field, value, oldState: prev, newState });
+            return newState;
+        })
+    };
+
     const handleGenerate = () => {
         if (localCard.imagePrompt) {
+            debugService.log('StoryCardEditor: AI image generation triggered', { prompt: localCard.imagePrompt });
             onGenerateImage(localCard.imagePrompt, (base64) => {
-                setLocalCard(prev => ({ ...prev, imageBase64: base64 }));
+                debugService.log('StoryCardEditor: AI image generation completed and received base64', { base64Length: base64.length });
+                updateField('imageBase64', base64);
             });
         }
     };
     
     const handleFileUpload = (file: File | null, field: 'imageBase64' | 'foregroundImageBase64') => {
+        debugService.log('StoryCardEditor: File upload initiated', { field, fileName: file?.name, fileType: file?.type });
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 if (typeof e.target?.result === 'string') {
-                    setLocalCard(prev => ({...prev, [field]: e.target.result}));
+                    debugService.log('StoryCardEditor: File read successfully', { field, dataUrlLength: e.target.result.length });
+                    updateField(field, e.target.result);
                 }
             };
             reader.readAsDataURL(file);
         } else if (file) {
             alert('Please select a valid image file.');
+            debugService.log('StoryCardEditor: Invalid file type for upload', { fileName: file.name, fileType: file.type });
         }
     }
 
     const updateStyle = (key: keyof NonNullable<StoryCard['styles']>, value: any) => {
-        setLocalCard(prev => ({
-            ...prev,
-            styles: {
-                ...(prev.styles || {}),
-                [key]: value
-            }
-        }));
+        setLocalCard(prev => {
+            const newState = {
+                ...prev,
+                styles: {
+                    ...(prev.styles || {}),
+                    [key]: value
+                }
+            };
+            debugService.log('StoryCardEditor: Updating style', { key, value, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const updateFgStyle = (key: keyof NonNullable<StoryCard['styles']>['foregroundImageStyles'], value: any) => {
-        setLocalCard(prev => ({
-            ...prev,
-            styles: {
-                ...prev.styles,
-                foregroundImageStyles: {
-                    ...(prev.styles?.foregroundImageStyles || {}),
-                    [key]: value,
+        setLocalCard(prev => {
+            const newState = {
+                ...prev,
+                styles: {
+                    ...prev.styles,
+                    foregroundImageStyles: {
+                        ...(prev.styles?.foregroundImageStyles || {}),
+                        [key]: value,
+                    }
                 }
-            }
-        }));
+            };
+            debugService.log('StoryCardEditor: Updating foreground style', { key, value, oldState: prev, newState });
+            return newState;
+        });
+    };
+    
+    const handleSave = () => {
+        debugService.log('StoryCardEditor: "Save Changes" clicked. Calling onSave.', { finalCardState: localCard });
+        onSave(localCard);
+    };
+
+    const handleCancel = () => {
+        debugService.log('StoryCardEditor: "Cancel" clicked.');
+        onCancel();
     };
     
     const styles = useMemo(() => {
@@ -126,18 +163,18 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
             <main className="flex-grow p-6 space-y-6 overflow-y-auto">
                  <div>
                     <label className="block text-sm font-medium text-gray-400">Description</label>
-                    <textarea value={localCard.description} onChange={e => setLocalCard(prev => ({ ...prev, description: e.target.value }))} rows={4} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                    <textarea value={localCard.description} onChange={e => updateField('description', e.target.value)} rows={4} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-gray-400">AI Background Prompt</label>
-                    <textarea value={localCard.imagePrompt} onChange={e => setLocalCard(prev => ({ ...prev, imagePrompt: e.target.value }))} rows={2} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
+                    <textarea value={localCard.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
                     <div className="flex space-x-2 mt-2">
                         <button onClick={handleGenerate} disabled={isGenerating || !localCard.imagePrompt} className="flex-1 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">
                             {isGenerating ? 'Generating...' : 'Generate with AI'}
                         </button>
                         <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Upload Background</button>
                         <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
-                         {localCard.imageBase64 && <button onClick={() => setLocalCard(p => ({...p, imageBase64: undefined}))} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                         {localCard.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
                     </div>
                 </div>
                 
@@ -185,7 +222,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                     <div className="flex space-x-2">
                         <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Upload Foreground</button>
                         <input type="file" accept="image/*" ref={fgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'foregroundImageBase64')} className="hidden"/>
-                        {localCard.foregroundImageBase64 && <button onClick={() => setLocalCard(p => ({...p, foregroundImageBase64: undefined}))} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                        {localCard.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
                     </div>
                     {localCard.foregroundImageBase64 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -204,7 +241,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                  {choices && !isChoiceCard && (
                     <fieldset className="space-y-4 pt-4 border-t border-gray-700">
                         <legend className="text-lg font-semibold text-gray-300 px-1">Player Choice</legend>
-                        <StyleSelect label="Link to Choice" value={localCard.choiceId} onChange={e => setLocalCard(p => ({ ...p, choiceId: e.target.value || undefined }))}>
+                        <StyleSelect label="Link to Choice" value={localCard.choiceId} onChange={e => updateField('choiceId', e.target.value || undefined)}>
                             <option value="">-- No Choice --</option>
                             {choices.map(choice => (
                                 <option key={choice.id} value={choice.id}>{choice.name}</option>
@@ -239,8 +276,8 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
                 )}
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={() => onSave(localCard)} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+                <button onClick={handleCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
             </footer>
         </div>
     );

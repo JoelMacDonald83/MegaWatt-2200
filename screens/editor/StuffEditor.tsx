@@ -1,11 +1,13 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { StuffSet, StuffItem, AttributeDefinition } from '../../types';
 import { PlusIcon } from '../../components/icons/PlusIcon';
 import { TrashIcon } from '../../components/icons/TrashIcon';
 import { Modal } from '../../components/Modal';
 import { PencilIcon } from '../../components/icons/PencilIcon';
+import { debugService } from '../../services/debugService';
+
 
 interface StuffEditorProps {
     initialStuffSet: StuffSet;
@@ -21,23 +23,52 @@ const ItemEditorModal: React.FC<{
 }> = ({ item, onSave, onClose }) => {
   const [localItem, setLocalItem] = useState<StuffItem>(() => JSON.parse(JSON.stringify(item)));
 
+  useEffect(() => {
+    debugService.log('ItemEditorModal: Mounted or received new item prop', { item });
+    setLocalItem(JSON.parse(JSON.stringify(item)));
+  }, [item]);
+
   const updateField = (field: keyof StuffItem, value: any) => {
-    setLocalItem(prev => ({ ...prev, [field]: value }));
+    setLocalItem(prev => {
+        const newState = { ...prev, [field]: value };
+        debugService.log('ItemEditorModal: Updating field', { field, value, oldState: prev, newState });
+        return newState;
+    });
   };
   
   const addAttribute = () => {
-    const newAttr: AttributeDefinition = { id: `attr_${Date.now()}`, name: 'New Attribute', type: 'string' };
-    updateField('attributes', [...localItem.attributes, newAttr]);
+    setLocalItem(prev => {
+        const newAttr: AttributeDefinition = { id: `attr_${Date.now()}`, name: 'New Attribute', type: 'string' };
+        const newState = { ...prev, attributes: [...prev.attributes, newAttr]};
+        debugService.log('ItemEditorModal: Adding attribute', { newAttr, oldState: prev, newState });
+        return newState;
+    });
   };
   
   const updateAttribute = (attrId: string, updatedAttr: Partial<AttributeDefinition>) => {
-    const newAttributes = localItem.attributes.map(a => a.id === attrId ? {...a, ...updatedAttr} : a);
-    updateField('attributes', newAttributes);
+    setLocalItem(prev => {
+        const newAttributes = prev.attributes.map(a => a.id === attrId ? {...a, ...updatedAttr} : a);
+        const newState = { ...prev, attributes: newAttributes };
+        debugService.log('ItemEditorModal: Updating attribute', { attrId, updatedAttr, oldState: prev, newState });
+        return newState;
+    });
   };
   
   const removeAttribute = (attrId: string) => {
-    updateField('attributes', localItem.attributes.filter(a => a.id !== attrId));
+    setLocalItem(prev => {
+        const newState = {
+        ...prev,
+        attributes: prev.attributes.filter(a => a.id !== attrId)
+        };
+        debugService.log('ItemEditorModal: Removing attribute', { attrId, oldState: prev, newState });
+        return newState;
+    });
   };
+
+  const handleSave = () => {
+    debugService.log('ItemEditorModal: Save clicked', { finalItemState: localItem });
+    onSave(localItem);
+  }
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Editing Item: ${item.name}`}>
@@ -72,7 +103,7 @@ const ItemEditorModal: React.FC<{
       </div>
       <div className="mt-6 flex justify-end space-x-3">
         <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-        <button onClick={() => onSave(localItem)} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Item</button>
+        <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Item</button>
       </div>
     </Modal>
   );
@@ -83,32 +114,85 @@ export const StuffEditor: React.FC<StuffEditorProps> = ({ initialStuffSet, onSav
     const [localStuffSet, setLocalStuffSet] = useState<StuffSet>(() => JSON.parse(JSON.stringify(initialStuffSet)));
     const [editingItem, setEditingItem] = useState<StuffItem | null>(null);
 
+    useEffect(() => {
+        debugService.log('StuffEditor: Component mounted or received new props.', { initialStuffSet, isNew });
+        setLocalStuffSet(JSON.parse(JSON.stringify(initialStuffSet)));
+    }, [initialStuffSet, isNew]);
+    
+    useEffect(() => {
+        debugService.log('StuffEditor: Editing item state changed.', { editingItem });
+    }, [editingItem]);
+
     const updateField = (field: keyof StuffSet, value: any) => {
-        setLocalStuffSet(prev => ({ ...prev, [field]: value }));
+        setLocalStuffSet(prev => {
+            const newState = { ...prev, [field]: value };
+            debugService.log('StuffEditor: Updating simple field', { field, value, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const handleAddItem = () => {
-        const newItem: StuffItem = {
-            id: `item_${Date.now()}`,
-            name: 'New Item',
-            description: '',
-            category: 'General',
-            attributes: []
-        };
-        updateField('items', [...localStuffSet.items, newItem]);
+        setLocalStuffSet(prev => {
+            const newItem: StuffItem = {
+                id: `item_${Date.now()}`,
+                name: 'New Item',
+                description: '',
+                category: 'General',
+                attributes: []
+            };
+            const newState = { ...prev, items: [...prev.items, newItem]};
+            debugService.log('StuffEditor: Adding new item', { newItem, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const handleSaveItem = (updatedItem: StuffItem) => {
-        const newItems = localStuffSet.items.map(i => i.id === updatedItem.id ? updatedItem : i);
-        updateField('items', newItems);
+        debugService.log('StuffEditor: Saving item from modal', { updatedItem });
+        setLocalStuffSet(prev => {
+            const newItems = prev.items.map(i => i.id === updatedItem.id ? updatedItem : i);
+            const newState = { ...prev, items: newItems };
+            debugService.log('StuffEditor: Item array updated', { oldState: prev, newState });
+            return newState;
+        });
         setEditingItem(null);
     };
 
     const handleRemoveItem = (itemId: string) => {
         if (window.confirm('Are you sure you want to delete this item?')) {
-            updateField('items', localStuffSet.items.filter(i => i.id !== itemId));
+             setLocalStuffSet(prev => {
+                const newState = {
+                    ...prev,
+                    items: prev.items.filter(i => i.id !== itemId)
+                };
+                debugService.log('StuffEditor: Removing item', { itemId, oldState: prev, newState });
+                return newState;
+            });
+        } else {
+            debugService.log('StuffEditor: Item removal cancelled by user', { itemId });
         }
     };
+    
+    const handleSaveChanges = () => {
+        debugService.log('StuffEditor: "Save Changes" clicked. Calling onSave.', { finalState: localStuffSet });
+        onSave(localStuffSet);
+    };
+    
+    const handleCancelClick = () => {
+        debugService.log('StuffEditor: "Cancel" clicked.');
+        onCancel();
+    }
+
+    const categorizedItems = useMemo(() => {
+        return localStuffSet.items.reduce((acc, item) => {
+            const category = item.category || 'Uncategorized';
+            if (!acc[category]) {
+                acc[category] = [];
+            }
+            acc[category].push(item);
+            return acc;
+        }, {} as Record<string, StuffItem[]>);
+    }, [localStuffSet.items]);
+
 
     return (
         <div className="flex-1 flex flex-col bg-gray-800">
@@ -133,18 +217,25 @@ export const StuffEditor: React.FC<StuffEditorProps> = ({ initialStuffSet, onSav
                       </button>
                     </div>
 
-                    <div className="space-y-2">
-                        {localStuffSet.items.map(item => (
-                            <div key={item.id} className="bg-gray-900/50 p-3 rounded-md border border-gray-600 flex justify-between items-center">
-                                <div>
-                                    <p className="font-semibold text-gray-200">{item.name}</p>
-                                    <p className="text-xs text-gray-400">{item.category} &bull; {item.attributes.length} attribute(s)</p>
+                    <div className="space-y-3">
+                        {Object.keys(categorizedItems).sort().map(category => (
+                            <details key={category} open className="bg-gray-900/50 rounded-lg border border-gray-700">
+                                <summary className="p-3 font-semibold text-cyan-300 cursor-pointer">{category}</summary>
+                                <div className="px-3 pb-3 space-y-2">
+                                {categorizedItems[category].map(item => (
+                                    <div key={item.id} className="bg-gray-800 p-3 rounded-md flex justify-between items-center">
+                                        <div>
+                                            <p className="font-semibold text-gray-200">{item.name}</p>
+                                            <p className="text-xs text-gray-400">{item.description || <i>No description</i>}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <button onClick={() => setEditingItem(item)} className="p-1 text-gray-400 hover:text-white"><PencilIcon className="w-4 h-4" /></button>
+                                            <button onClick={() => handleRemoveItem(item.id)} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
+                                        </div>
+                                    </div>
+                                ))}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setEditingItem(item)} className="p-1 text-gray-400 hover:text-white"><PencilIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleRemoveItem(item.id)} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
-                                </div>
-                            </div>
+                            </details>
                         ))}
                          {localStuffSet.items.length === 0 && (
                             <p className="text-center text-sm text-gray-500 italic py-4">No items defined in this set yet.</p>
@@ -154,8 +245,8 @@ export const StuffEditor: React.FC<StuffEditorProps> = ({ initialStuffSet, onSav
 
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={() => onSave(localStuffSet)} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+                <button onClick={handleCancelClick} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
             </footer>
 
             {editingItem && (

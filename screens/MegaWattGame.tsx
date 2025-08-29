@@ -1,13 +1,8 @@
 
-
-
-
-
-
-
 import React, { useMemo, useState, useEffect } from 'react';
 import type { GameData, Entity, Template, StoryCard, ChoiceOutcome, PlayerChoice, ChoiceOption, AttributeDefinition, StuffSet, Condition } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
+import { debugService } from '../services/debugService';
 
 interface ResolvedAttribute {
     definition: AttributeDefinition;
@@ -29,6 +24,7 @@ interface ResolvedEntityAttributes {
 const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEntityAttributes => {
     const template = gameData.templates.find(t => t.id === entity.templateId);
     if (!template) {
+        debugService.log("MegaWattGame: resolveEntityAttributes failed, template not found", { entityId: entity.id, templateId: entity.templateId });
         return { templateAttributes: [], stuff: [] };
     }
 
@@ -57,7 +53,9 @@ const resolveEntityAttributes = (entity: Entity, gameData: GameData): ResolvedEn
 
     }).filter((s): s is { setName: string; items: ResolvedStuffItem[] } => s !== null);
 
-    return { templateAttributes, stuff };
+    const resolvedData = { templateAttributes, stuff };
+    debugService.log("MegaWattGame: Resolved entity attributes", { entityName: entity.name, resolvedData });
+    return resolvedData;
 };
 
 
@@ -189,39 +187,48 @@ const ChoicePresenter: React.FC<{
     const promptTextColorClass = choice.styles?.promptStyles?.textColor || 'text-cyan-200';
 
     const choiceOptions = useMemo((): { card: Omit<StoryCard, 'id' | 'choiceId'>, outcome: ChoiceOutcome }[] => {
+        debugService.log("ChoicePresenter: Calculating choice options", { choice });
+        
         if (choice.choiceType === 'static') {
             const options = choice.staticOptions || [];
-            return options.filter(opt => {
-                if (!opt.conditions || opt.conditions.length === 0) return true;
-                return opt.conditions.every(cond => evaluateCondition(cond, gameData));
+            const finalOptions = options.filter(opt => {
+                if (!opt.conditions || opt.conditions.length === 0) {
+                    debugService.log("ChoicePresenter: Static option included (no conditions)", { optionId: opt.id });
+                    return true;
+                }
+                const allConditionsMet = opt.conditions.every(cond => evaluateCondition(cond, gameData));
+                debugService.log("ChoicePresenter: Static option evaluated", { optionId: opt.id, allConditionsMet });
+                return allConditionsMet;
             });
+            debugService.log("ChoicePresenter: Final static options", { options: finalOptions });
+            return finalOptions;
         }
         
         if (choice.choiceType === 'dynamic_from_template' && choice.dynamicConfig) {
             const { sourceTemplateId, cardTemplate, outcomeTemplate, filterConditions } = choice.dynamicConfig;
             const sourceTemplate = gameData.templates.find(t => t.id === sourceTemplateId);
-            if (!sourceTemplate) return [];
+            if (!sourceTemplate) {
+                 debugService.log("ChoicePresenter: Dynamic choice failed, source template not found", { sourceTemplateId });
+                return [];
+            }
             
             let sourceEntities = gameData.entities.filter(e => e.templateId === sourceTemplateId);
+            debugService.log("ChoicePresenter: Found initial dynamic entities", { count: sourceEntities.length, entities: sourceEntities.map(e => e.name) });
 
             if (filterConditions && filterConditions.length > 0) {
                 sourceEntities = sourceEntities.filter(entity => {
                     return filterConditions.every(cond => {
-                        // For filters, the condition's target is the entity being iterated on.
                          if (cond.type === 'attribute') {
                             const conditionForEntity: Condition = { ...cond, targetEntityId: entity.id };
                             return evaluateCondition(conditionForEntity, gameData);
                          }
-                         // Other filter types like EntityExists or HasStuff might need different handling
-                         // if they're meant to be relative to the entity, but for now we assume
-                         // they are global checks.
                         return evaluateCondition(cond, gameData);
                     })
                 });
+                debugService.log("ChoicePresenter: Entities after filtering", { count: sourceEntities.length, entities: sourceEntities.map(e => e.name) });
             }
 
-
-            return sourceEntities.map(entity => {
+            const finalOptions = sourceEntities.map(entity => {
                 const parsedCard: Omit<StoryCard, 'id' | 'choiceId'> = {
                     ...cardTemplate,
                     description: parsePlaceholders(cardTemplate.description, entity, sourceTemplate),
@@ -234,6 +241,8 @@ const ChoicePresenter: React.FC<{
                 };
                 return { card: parsedCard, outcome };
             });
+            debugService.log("ChoicePresenter: Final dynamic options", { options: finalOptions });
+            return finalOptions;
         }
 
         return [];
@@ -350,8 +359,17 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
     const { story, choices } = gameData;
     const [introStep, setIntroStep] = useState(story && story.length > 0 ? 0 : -1);
     const [animationState, setAnimationState] = useState<'in' | 'out'>('in');
+    
+    useEffect(() => {
+        debugService.log("MegaWattGame: Component mounted", { gameData });
+    }, []);
+
+    useEffect(() => {
+        debugService.log("MegaWattGame: Intro step changed", { introStep, animationState });
+    }, [introStep, animationState]);
 
     const handleIntroCompletion = (outcome?: ChoiceOutcome) => {
+        debugService.log("MegaWattGame: Intro card completed", { introStep, outcome });
         if (outcome) {
             onChoiceMade(outcome);
         }
@@ -365,6 +383,7 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                 setAnimationState('in');
             } else {
                 setIntroStep(-1); // End of intro
+                debugService.log("MegaWattGame: Intro sequence finished.");
             }
         }, transitionDuration * 1000 + 100); // Must be slightly longer than CSS animation duration
     };

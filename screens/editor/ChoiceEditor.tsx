@@ -1,7 +1,6 @@
 
 
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { GameData, PlayerChoice, ChoiceOption, StoryCard, Condition } from '../../types';
 import { StyleRadio, StyleSelect } from '../../components/editor/StyleComponents';
 import { TrashIcon } from '../../components/icons/TrashIcon';
@@ -9,6 +8,8 @@ import { Modal } from '../../components/Modal';
 import { StoryCardEditor } from './StoryCardEditor';
 import { ConditionEditor } from './ConditionEditor';
 import { conditionToString } from '../../services/conditionEvaluator';
+import { debugService } from '../../services/debugService';
+
 
 interface ChoiceEditorProps {
     initialChoice: PlayerChoice;
@@ -35,58 +36,97 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     const [editingCardState, setEditingCardState] = useState<EditingCardState>(null);
     const [editingConditionState, setEditingConditionState] = useState<EditingConditionState>(null);
 
+    useEffect(() => {
+        debugService.log('ChoiceEditor: Component mounted or received new props.', { initialChoice, isNew });
+        setLocalChoice(JSON.parse(JSON.stringify(initialChoice)));
+    }, [initialChoice, isNew]);
+    
+    useEffect(() => {
+        debugService.log('ChoiceEditor: Editing card state changed.', { editingCardState });
+    }, [editingCardState]);
+    
+    useEffect(() => {
+        debugService.log('ChoiceEditor: Editing condition state changed.', { editingConditionState });
+    }, [editingConditionState]);
 
     const updateField = (field: keyof PlayerChoice, value: any) => {
-        setLocalChoice(prev => ({ ...prev, [field]: value }));
+        setLocalChoice(prev => {
+            const newState = { ...prev, [field]: value };
+            debugService.log('ChoiceEditor: Updating simple field', { field, value, oldState: prev, newState });
+            return newState;
+        });
     };
     
     const updatePromptStyle = (key: keyof NonNullable<PlayerChoice['styles']>['promptStyles'], value: any) => {
-        setLocalChoice(prev => ({
-            ...prev,
-            styles: {
-                ...(prev.styles || {}),
-                promptStyles: {
-                    ...(prev.styles?.promptStyles || {}),
-                    [key]: value
+        setLocalChoice(prev => {
+             const newState = {
+                ...prev,
+                styles: {
+                    ...(prev.styles || {}),
+                    promptStyles: {
+                        ...(prev.styles?.promptStyles || {}),
+                        [key]: value
+                    }
                 }
-            }
-        }));
+            };
+            debugService.log('ChoiceEditor: Updating prompt style', { key, value, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const handleChoiceTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newType = e.target.value as PlayerChoice['choiceType'];
+        debugService.log('ChoiceEditor: Choice type changing', { newType });
         setLocalChoice(prev => {
+            let newState = { ...prev, choiceType: newType };
             if (newType === 'static' && !prev.staticOptions) {
-                return { ...prev, choiceType: newType, staticOptions: [] };
+                newState.staticOptions = [];
             }
             if (newType === 'dynamic_from_template' && !prev.dynamicConfig) {
-                 return { ...prev, choiceType: newType, dynamicConfig: { sourceTemplateId: '', cardTemplate: { description: '{entity.name}', imagePrompt: '' }, outcomeTemplate: { type: 'update_entity', targetEntityId: '', attributeId: '' } } };
+                 newState.dynamicConfig = { sourceTemplateId: '', cardTemplate: { description: '{entity.name}', imagePrompt: '' }, outcomeTemplate: { type: 'update_entity', targetEntityId: '', attributeId: '' } };
             }
-            return { ...prev, choiceType: newType };
+            debugService.log('ChoiceEditor: Choice type changed', { oldState: prev, newState });
+            return newState;
         })
     };
 
     const updateStaticOption = (optionId: string, newOptionData: Partial<ChoiceOption>) => {
-        const newOptions = (localChoice.staticOptions || []).map(opt =>
-            opt.id === optionId ? { ...opt, ...newOptionData } : opt
-        );
-        updateField('staticOptions', newOptions);
+        setLocalChoice(prev => {
+            const newOptions = (prev.staticOptions || []).map(opt =>
+                opt.id === optionId ? { ...opt, ...newOptionData } : opt
+            );
+            const newState = { ...prev, staticOptions: newOptions };
+            debugService.log('ChoiceEditor: Updating static option', { optionId, newOptionData, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const addStaticOption = () => {
-        const newOption: ChoiceOption = {
-            id: `opt_${Date.now()}`,
-            card: { description: 'New Option', imagePrompt: ''},
-            outcome: { type: 'create_entity', templateId: gameData.templates[0]?.id || '', name: 'New Entity' }
-        };
-        updateField('staticOptions', [...(localChoice.staticOptions || []), newOption]);
+        setLocalChoice(prev => {
+            const newOption: ChoiceOption = {
+                id: `opt_${Date.now()}`,
+                card: { description: 'New Option', imagePrompt: ''},
+                outcome: { type: 'create_entity', templateId: gameData.templates[0]?.id || '', name: 'New Entity' }
+            };
+            const newState = { ...prev, staticOptions: [...(prev.staticOptions || []), newOption] };
+            debugService.log('ChoiceEditor: Adding static option', { newOption, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const removeStaticOption = (optionId: string) => {
-        updateField('staticOptions', (localChoice.staticOptions || []).filter(opt => opt.id !== optionId));
+        setLocalChoice(prev => {
+            const newState = {
+                ...prev,
+                staticOptions: (prev.staticOptions || []).filter(opt => opt.id !== optionId)
+            };
+            debugService.log('ChoiceEditor: Removing static option', { optionId, oldState: prev, newState });
+            return newState;
+        });
     };
 
     const handleSaveCard = (savedCard: StoryCard) => {
+        debugService.log('ChoiceEditor: Saving card from StoryCardEditor', { savedCard, editingCardState });
         if (!editingCardState) return;
     
         const { id, choiceId, ...cardData } = savedCard;
@@ -94,16 +134,21 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         if (editingCardState.type === 'static') {
             updateStaticOption(editingCardState.optionId, { card: cardData });
         } else if (editingCardState.type === 'dynamic') {
-            setLocalChoice(p => ({
-                ...p,
-                dynamicConfig: { ...p.dynamicConfig!, cardTemplate: cardData }
-            }));
+            setLocalChoice(p => {
+                const newState = {
+                    ...p,
+                    dynamicConfig: { ...p.dynamicConfig!, cardTemplate: cardData }
+                };
+                debugService.log('ChoiceEditor: Updating dynamic card template', { cardData, oldState: p, newState });
+                return newState;
+            });
         }
     
         setEditingCardState(null);
     };
     
     const handleSaveCondition = (condition: Condition) => {
+        debugService.log('ChoiceEditor: Saving condition from ConditionEditor', { condition, editingConditionState });
         if (!editingConditionState) return;
 
         if (editingConditionState.type === 'static') {
@@ -125,12 +170,17 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
             } else {
                 newConditions.push(condition);
             }
-            setLocalChoice(p => ({ ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }}));
+            setLocalChoice(p => {
+                const newState = { ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }};
+                debugService.log('ChoiceEditor: Updating dynamic filter conditions', { newConditions, oldState: p, newState });
+                return newState;
+            });
         }
         setEditingConditionState(null);
     };
 
     const handleRemoveCondition = (type: 'static' | 'dynamic', index: number, optionId?: string) => {
+        debugService.log('ChoiceEditor: Removing condition', { type, index, optionId });
         if (type === 'static' && optionId) {
             const option = (localChoice.staticOptions || []).find(o => o.id === optionId);
             if (!option || !option.conditions) return;
@@ -139,10 +189,23 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         } else if (type === 'dynamic') {
             if (!localChoice.dynamicConfig?.filterConditions) return;
             const newConditions = localChoice.dynamicConfig.filterConditions.filter((_, i) => i !== index);
-            setLocalChoice(p => ({ ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }}));
+            setLocalChoice(p => {
+                 const newState = { ...p, dynamicConfig: { ...p.dynamicConfig!, filterConditions: newConditions }};
+                 debugService.log('ChoiceEditor: Removing dynamic filter condition', { index, oldState: p, newState });
+                 return newState;
+            });
         }
     };
 
+    const handleSaveChanges = () => {
+        debugService.log('ChoiceEditor: "Save Changes" button clicked. Calling onSave.', { finalChoiceState: localChoice });
+        onSave(localChoice);
+    };
+
+    const handleCancelClick = () => {
+        debugService.log('ChoiceEditor: "Cancel" button clicked.');
+        onCancel();
+    };
 
     const targetEntityForDynamicOutcome = useMemo(() => {
         if (localChoice.choiceType === 'dynamic_from_template' && localChoice.dynamicConfig?.outcomeTemplate.targetEntityId) {
@@ -285,8 +348,8 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                 </div>
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={() => onSave(localChoice)} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+                <button onClick={handleCancelClick} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
             </footer>
 
             <Modal

@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../../components/Modal';
 import { GameData, Condition, ConditionOperator, AttributeDefinition } from '../../types';
 import { StyleSelect } from '../../components/editor/StyleComponents';
+import { debugService } from '../../services/debugService';
 
 interface ConditionEditorProps {
     isOpen: boolean;
@@ -38,6 +39,8 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
 
     // This effect synchronizes the local state if the initial condition prop changes while the modal is open
     useEffect(() => {
+        if (!isOpen) return;
+        debugService.log('ConditionEditor: Modal opened or props changed.', { initialCondition, isFilter });
         if (initialCondition) {
             setConditionType(initialCondition.type);
             if (initialCondition.type === 'attribute') setAttrCondition(initialCondition);
@@ -45,12 +48,13 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
             if (initialCondition.type === 'has_stuff') setStuffCondition(initialCondition);
         } else {
             // Reset to defaults for a new condition
+            debugService.log('ConditionEditor: Resetting to blank condition.');
             setConditionType('attribute');
             setAttrCondition(BLANK_ATTRIBUTE_CONDITION);
             setExistsCondition({ templateId: '', exists: true });
             setStuffCondition({ targetEntityId: '', stuffItemId: '', hasIt: true });
         }
-    }, [initialCondition, isOpen]);
+    }, [initialCondition, isOpen, isFilter]);
     
 
     const selectedEntityForAttr = useMemo(() => {
@@ -59,12 +63,16 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
     }, [attrCondition.targetEntityId, gameData.entities]);
     
     const availableAttributes = useMemo((): {id: string, name: string}[] => {
+        // For dynamic filters, we can't know the entity, so we need a representative template.
+        // This part of the UI logic would need to be passed the sourceTemplateId for full accuracy.
+        // As a fallback, we'll assume any entity might be the target. For now, this is a limitation.
         const targetEntity = isFilter ? gameData.entities[0] : selectedEntityForAttr;
         if (!targetEntity) return [];
 
         const template = gameData.templates.find(t => t.id === targetEntity.templateId);
         if (!template) return [];
-
+        
+        // This should walk up the inheritance chain similar to EntityEditor
         const baseAttrs = template.attributes.map(a => ({ id: a.id, name: `${a.name} (Base)` }));
 
         const stuffAttrs = (template.includedStuff || []).flatMap(is => {
@@ -99,8 +107,16 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
         }
 
         if (conditionToSave) {
+            debugService.log('ConditionEditor: Saving condition', { condition: conditionToSave });
             onSave(conditionToSave);
+        } else {
+            debugService.log('ConditionEditor: Save aborted, no valid condition to save.');
         }
+    };
+    
+    const handleClose = () => {
+        debugService.log('ConditionEditor: Modal closed without saving.');
+        onClose();
     };
 
     const renderAttributeEditor = () => (
@@ -167,7 +183,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
     return (
         <Modal
             isOpen={isOpen}
-            onClose={onClose}
+            onClose={handleClose}
             title={initialCondition ? 'Edit Condition' : 'Add Condition'}
         >
             <div className="space-y-4">
@@ -184,7 +200,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
                 </div>
             </div>
              <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+                <button onClick={handleClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
                 <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Condition</button>
             </div>
         </Modal>

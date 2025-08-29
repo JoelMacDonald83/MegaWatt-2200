@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
 import type { GameData, ChoiceOutcome } from './types';
+import { debugService } from './services/debugService';
 
 // Define IDs for consistent referencing
 const TEMPLATE_CHARACTER_ID = 'template_char_1';
@@ -197,7 +198,7 @@ const initialGameData: GameData = {
      {
       id: TEMPLATE_FACILITY_ID,
       name: 'Facility',
-      description: 'A structural installation within the colony.',
+      description: 'A structural installation within the a colonym.',
       tags: ['location', 'structure'],
       attributes: [
         { id: ATTR_STATUS_ID, name: 'Status Report', type: 'textarea' },
@@ -288,8 +289,19 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   const [gameData, setGameData] = useState<GameData>(initialGameData);
 
+  useEffect(() => {
+    debugService.log("App: Component mounted", { initialGameData });
+  }, []);
+
+  useEffect(() => {
+    debugService.log("App: View mode changed", { viewMode });
+  }, [viewMode]);
+
   const handleChoiceOutcome = (outcome: ChoiceOutcome) => {
+    debugService.log("App: handleChoiceOutcome triggered from game preview", { outcome });
     setGameData(prevData => {
+      debugService.log("App: gameData state before outcome", { gameData: prevData });
+      let newGameData: GameData;
       if (outcome.type === 'create_entity') {
         const newEntity = {
           id: `entity_${Date.now()}`,
@@ -297,13 +309,12 @@ const App: React.FC = () => {
           name: outcome.name,
           attributeValues: outcome.attributeValues || {},
         };
-        return {
+        newGameData = {
           ...prevData,
           entities: [...prevData.entities, newEntity]
         };
-      }
-       if (outcome.type === 'update_entity') {
-        return {
+      } else if (outcome.type === 'update_entity') {
+        newGameData = {
           ...prevData,
           entities: prevData.entities.map(entity => {
             if (entity.id === outcome.targetEntityId) {
@@ -318,8 +329,11 @@ const App: React.FC = () => {
             return entity;
           })
         };
+      } else {
+        newGameData = prevData;
       }
-      return prevData;
+      debugService.log("App: gameData state after outcome", { gameData: newGameData });
+      return newGameData;
     });
   };
 

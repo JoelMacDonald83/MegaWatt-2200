@@ -1,11 +1,13 @@
 
 
-import React, { useState } from 'react';
-import type { Template, AttributeDefinition, GameData } from '../../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { Template, AttributeDefinition, GameData, IncludedStuff, StuffItem } from '../../types';
 import { Modal } from '../../components/Modal';
+import { debugService } from '../../services/debugService';
 
 interface TemplateEditorProps {
-    initialTemplate: Template;
+    template: Template;
+    onChange: (t: Template) => void;
     onSave: (t: Template) => void;
     onCancel: () => void;
     gameData: GameData;
@@ -22,103 +24,283 @@ const ItemSelectionModal: React.FC<{
   const [localSelection, setLocalSelection] = useState(selectedItemIds);
   const stuffSet = gameData.stuff.find(s => s.id === stuffSetId);
 
+  useEffect(() => {
+    debugService.log('ItemSelectionModal: Opened or received new props', { stuffSetId, selectedItemIds });
+    setLocalSelection(selectedItemIds);
+  }, [selectedItemIds, stuffSetId]);
+
   if (!stuffSet) return null;
 
   const handleToggle = (itemId: string) => {
-    setLocalSelection(prev => 
-      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
-    );
+    const newSelection = localSelection.includes(itemId)
+      ? localSelection.filter(id => id !== itemId)
+      : [...localSelection, itemId];
+    
+    debugService.log('ItemSelectionModal: Toggled item', { itemId, currentSelection: localSelection, newSelection });
+    setLocalSelection(newSelection);
   };
+  
+  const categorizedItems = useMemo(() => {
+      const categories: {[key: string]: StuffItem[]} = {};
+      stuffSet.items.forEach(item => {
+          if (!categories[item.category]) {
+              categories[item.category] = [];
+          }
+          categories[item.category].push(item);
+      });
+      return Object.entries(categories).sort(([a], [b]) => a.localeCompare(b));
+  }, [stuffSet.items]);
+
+  const handleSave = () => {
+    debugService.log('ItemSelectionModal: "Save Selection" clicked', { finalSelection: localSelection });
+    onSave(localSelection);
+    onClose();
+  };
+  
+  const handleClose = () => {
+    debugService.log('ItemSelectionModal: Closed without saving');
+    onClose();
+  }
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Select Items from ${stuffSet.name}`}>
-        <div className="space-y-3 max-h-96 overflow-y-auto">
-            {stuffSet.items.map(item => (
-                <label key={item.id} className="flex items-center p-3 bg-gray-900 rounded-md hover:bg-gray-700 cursor-pointer">
-                    <input 
-                        type="checkbox"
-                        checked={localSelection.includes(item.id)}
-                        onChange={() => handleToggle(item.id)}
-                        className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-cyan-600 focus:ring-cyan-500"
-                    />
-                    <span className="ml-3 text-gray-300">{item.name} <span className="text-sm text-gray-500">({item.category})</span></span>
-                </label>
+    <Modal isOpen={true} onClose={handleClose} title={`Select Items from ${stuffSet.name}`}>
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+            {categorizedItems.map(([category, items]) => (
+                <div key={category}>
+                    <h4 className="text-sm font-bold text-gray-400 border-b border-gray-600 pb-1 mb-2">{category}</h4>
+                    <div className="space-y-2">
+                        {items.map(item => (
+                            <label key={item.id} className="flex items-center p-2 bg-gray-900 rounded-md hover:bg-gray-700 cursor-pointer">
+                                <input 
+                                    type="checkbox"
+                                    checked={localSelection.includes(item.id)}
+                                    onChange={() => handleToggle(item.id)}
+                                    className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-cyan-600 focus:ring-cyan-500"
+                                />
+                                <span className="ml-3 text-gray-300">{item.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
             ))}
         </div>
         <div className="mt-6 flex justify-end space-x-3">
-            <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-            <button onClick={() => { onSave(localSelection); onClose(); }} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Selection</button>
+            <button onClick={handleClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+            <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Selection</button>
         </div>
     </Modal>
   );
 };
 
 
-export const TemplateEditor: React.FC<TemplateEditorProps> = ({ initialTemplate, onSave, onCancel, gameData, isNew }) => {
-    const { templates, stuff } = gameData;
-    const [localTemplate, setLocalTemplate] = useState<Template>(() => JSON.parse(JSON.stringify(initialTemplate)));
-    const [newTag, setNewTag] = useState('');
-    const [isItemSelectionOpen, setIsItemSelectionOpen] = useState<string | null>(null); // holds setId
+const getDescendantIds = (templateId: string, templates: Template[]): string[] => {
+    let children = templates.filter(t => t.parentId === templateId);
+    let descendantIds: string[] = children.map(c => c.id);
+    children.forEach(child => {
+        descendantIds = descendantIds.concat(getDescendantIds(child.id, templates));
+    });
+    return descendantIds;
+};
 
-    const updateField = (field: keyof Template, value: any) => {
-        setLocalTemplate(prev => ({ ...prev, [field]: value }));
+interface ResolvedAttribute {
+    definition: AttributeDefinition;
+    sourceName: string;
+    sourceId: string;
+}
+
+interface ResolvedStuff {
+    stuff: IncludedStuff;
+    sourceName: string;
+    sourceId: string;
+}
+
+const useResolvedTemplate = (template: Template, allTemplates: Template[]) => {
+    return useMemo(() => {
+        debugService.log('TemplateEditor: Recalculating resolved properties (inheritance)', { template, allTemplates });
+        const resolved = {
+            attributes: [] as ResolvedAttribute[],
+            includedStuff: [] as ResolvedStuff[],
+        };
+        
+        let current: Template | undefined = template;
+
+        while (current) {
+            const currentId = current.id;
+            const currentName = current.name;
+
+            current.attributes.forEach(attr => {
+                if (!resolved.attributes.some(a => a.definition.id === attr.id)) {
+                    resolved.attributes.push({ definition: attr, sourceName: currentName, sourceId: currentId });
+                }
+            });
+             (current.includedStuff || []).forEach(is => {
+                if (!resolved.includedStuff.some(rs => rs.stuff.setId === is.setId)) {
+                    resolved.includedStuff.push({ stuff: is, sourceName: currentName, sourceId: currentId });
+                }
+            });
+            current = allTemplates.find(t => t.id === current?.parentId);
+        }
+        debugService.log('TemplateEditor: Finished recalculating resolved properties', { resolved });
+        return resolved;
+    }, [template, allTemplates]);
+};
+
+
+export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChange, onSave, onCancel, gameData, isNew }) => {
+    const { stuff } = gameData;
+    const [newTag, setNewTag] = useState('');
+    const [isItemSelectionOpen, setIsItemSelectionOpen] = useState<string | null>(null);
+
+    useEffect(() => {
+        debugService.log('TemplateEditor: Component mounted or received new props.', { template, isNew });
+        // This effect runs when the component mounts or when the 'template' prop changes.
+        // It's a key place to spot if the parent is overwriting the local state.
+    }, [template, isNew]);
+
+    const allTemplates = useMemo(() => {
+        const otherTemplates = gameData.templates.filter(t => t.id !== template.id);
+        return [...otherTemplates, template];
+    }, [gameData.templates, template]);
+
+    const resolvedProperties = useResolvedTemplate(template, allTemplates);
+
+    const inheritedAttributes = useMemo(() => 
+        resolvedProperties.attributes.filter(a => a.sourceId !== template.id), 
+        [resolvedProperties.attributes, template.id]
+    );
+
+    const inheritedStuff = useMemo(() => 
+        resolvedProperties.includedStuff.filter(s => s.sourceId !== template.id), 
+        [resolvedProperties.includedStuff, template.id]
+    );
+    
+    const updateSimpleField = (field: keyof Template, value: any) => {
+        const newState = { ...template, [field]: value };
+        debugService.log('TemplateEditor: Updating simple field', { field, value, oldState: template, newState });
+        onChange(newState);
     };
 
     const addAttribute = () => {
       const newAttr: AttributeDefinition = { id: `attr_${Date.now()}`, name: 'New Attribute', type: 'string' };
-      updateField('attributes', [...localTemplate.attributes, newAttr]);
+      const newState = { ...template, attributes: [...template.attributes, newAttr] };
+      debugService.log('TemplateEditor: Adding attribute', { newAttr, oldState: template, newState });
+      onChange(newState);
     };
     
     const updateAttribute = (attrId: string, updatedAttr: Partial<AttributeDefinition>) => {
-      const newAttributes = localTemplate.attributes.map(a => a.id === attrId ? {...a, ...updatedAttr} : a);
-      updateField('attributes', newAttributes);
+      const newState = {
+          ...template,
+          attributes: template.attributes.map(a => a.id === attrId ? {...a, ...updatedAttr} : a)
+      };
+      debugService.log('TemplateEditor: Updating attribute', { attrId, updatedAttr, oldState: template, newState });
+      onChange(newState);
     }
     
     const removeAttribute = (attrId: string) => {
-      updateField('attributes', localTemplate.attributes.filter(a => a.id !== attrId));
+      const newState = {
+          ...template,
+          attributes: template.attributes.filter(a => a.id !== attrId)
+      };
+      debugService.log('TemplateEditor: Removing attribute', { attrId, oldState: template, newState });
+      onChange(newState);
     }
+    
+    const handleAddTag = (tagToAdd: string) => {
+        if (!template.tags.includes(tagToAdd)) {
+            const newState = { ...template, tags: [...template.tags, tagToAdd] };
+            debugService.log('TemplateEditor: Adding tag', { tagToAdd, oldState: template, newState });
+            onChange(newState);
+        } else {
+            debugService.log('TemplateEditor: Add tag skipped (already exists)', { tagToAdd });
+        }
+    };
+
+    const handleRemoveTag = (tagToRemove: string) => {
+        const newState = {
+            ...template,
+            tags: template.tags.filter(t => t !== tagToRemove)
+        };
+        debugService.log('TemplateEditor: Removing tag', { tagToRemove, oldState: template, newState });
+        onChange(newState);
+    };
 
     const handleIncludeStuffSet = (setId: string) => {
-        if (!setId || (localTemplate.includedStuff || []).some(is => is.setId === setId)) return;
+        if (!setId) return;
+        if ((template.includedStuff || []).some(is => is.setId === setId)) {
+            debugService.log('TemplateEditor: Include stuff set skipped (already included)', { setId });
+            return;
+        }
         const newInclusion = { setId, itemIds: [] };
-        updateField('includedStuff', [...(localTemplate.includedStuff || []), newInclusion]);
+        const newState = { ...template, includedStuff: [...(template.includedStuff || []), newInclusion] };
+        debugService.log('TemplateEditor: Including stuff set', { newInclusion, oldState: template, newState });
+        onChange(newState);
     };
 
     const handleRemoveStuffSet = (setId: string) => {
-        updateField('includedStuff', (localTemplate.includedStuff || []).filter(is => is.setId !== setId));
+        const newState = {
+            ...template,
+            includedStuff: (template.includedStuff || []).filter(is => is.setId !== setId)
+        };
+        debugService.log('TemplateEditor: Removing stuff set', { setId, oldState: template, newState });
+        onChange(newState);
     };
 
     const handleSaveItemSelection = (setId: string, newItemIds: string[]) => {
-      const newIncludedStuff = (localTemplate.includedStuff || []).map(is => 
+      debugService.log('TemplateEditor: handleSaveItemSelection received from modal', { setId, newItemIds });
+      const newIncludedStuff = (template.includedStuff || []).map(is => 
           is.setId === setId ? { ...is, itemIds: newItemIds } : is
       );
-      updateField('includedStuff', newIncludedStuff);
+      const newState = { ...template, includedStuff: newIncludedStuff };
+      debugService.log('TemplateEditor: Updating includedStuff based on modal selection', { oldState: template, newState });
+      onChange(newState);
     };
 
-    const availableStuffSets = stuff.filter(s => !(localTemplate.includedStuff || []).some(is => is.setId === s.id));
+    const handleSaveChanges = () => {
+        debugService.log('TemplateEditor: "Save Changes" button clicked. Calling onSave with final state.', { finalState: template });
+        onSave(template);
+    };
+
+    const handleCancel = () => {
+        debugService.log('TemplateEditor: "Cancel" button clicked.');
+        onCancel();
+    }
+    
+    const parentTemplateCandidates = useMemo(() => {
+        const descendantIds = getDescendantIds(template.id, allTemplates);
+        return allTemplates.filter(t => t.id !== template.id && !descendantIds.includes(t.id));
+    }, [template.id, allTemplates]);
+
+    const availableStuffSets = stuff.filter(s => !(resolvedProperties.includedStuff || []).some(is => is.stuff.setId === s.id));
 
     return (
         <div className="flex-1 flex flex-col bg-gray-800">
             <header className="p-4 border-b border-gray-700">
-                <h2 className="text-xl font-bold text-cyan-300">{isNew ? 'Creating New Template' : `Editing: ${initialTemplate.name}`}</h2>
+                <h2 className="text-xl font-bold text-cyan-300">{isNew ? 'Creating New Template' : `Editing: ${template.name}`}</h2>
             </header>
             <main className="flex-grow p-6 space-y-6 overflow-y-auto">
                  <div>
                     <label className="block text-sm font-medium text-gray-400">Name</label>
-                    <input type="text" value={localTemplate.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                    <input type="text" value={template.name} onChange={e => updateSimpleField('name', e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-400">Parent Template</label>
+                    <select value={template.parentId || ''} onChange={e => updateSimpleField('parentId', e.target.value || undefined)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500">
+                      <option value="">-- No Parent --</option>
+                      {parentTemplateCandidates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-400">Description</label>
-                    <textarea value={localTemplate.description} onChange={e => updateField('description', e.target.value)} rows={3} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                    <textarea value={template.description} onChange={e => updateSimpleField('description', e.target.value)} rows={3} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-gray-400">Tags</label>
                     <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900 border border-gray-600 rounded-md">
-                        {localTemplate.tags.map((tag) => (
+                        {template.tags.map((tag) => (
                             <span key={tag} className="flex items-center bg-cyan-800/50 text-cyan-200 text-xs font-medium px-2.5 py-1 rounded-full">
                                 {tag}
                                 <button
-                                    onClick={() => updateField('tags', localTemplate.tags.filter(t => t !== tag))}
+                                    onClick={() => handleRemoveTag(tag)}
                                     className="ml-1.5 -mr-1 w-4 h-4 flex items-center justify-center rounded-full text-cyan-200 hover:bg-red-500/50 hover:text-white transition-colors"
                                     aria-label={`Remove tag ${tag}`}
                                 >&times;</button>
@@ -127,17 +309,15 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ initialTemplate,
                         <input type="text" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => {
                             if (e.key === 'Enter' && newTag.trim() !== '') {
                                 e.preventDefault();
-                                if (!localTemplate.tags.includes(newTag.trim())) {
-                                    updateField('tags', [...localTemplate.tags, newTag.trim()]);
-                                }
+                                handleAddTag(newTag.trim());
                                 setNewTag('');
                             }
                         }} placeholder="Add tag..." className="bg-transparent flex-grow p-1 focus:outline-none min-w-[80px]" />
                     </div>
                 </div>
                  <div className="space-y-4">
-                    <h4 className="text-lg font-semibold text-gray-300 border-b border-gray-600 pb-2">Attributes</h4>
-                    {localTemplate.attributes.map(attr => (
+                    <h4 className="text-lg font-semibold text-gray-300 border-b border-gray-600 pb-2">Own Attributes</h4>
+                    {template.attributes.map(attr => (
                         <div key={attr.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-center bg-gray-900/50 p-3 rounded-md">
                             <input type="text" placeholder="Attribute Name" value={attr.name} onChange={e => updateAttribute(attr.id, { name: e.target.value })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
                             <select value={attr.type} onChange={e => updateAttribute(attr.id, { type: e.target.value as AttributeDefinition['type'], referencedTemplateId: null })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500">
@@ -150,17 +330,31 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ initialTemplate,
                             {attr.type === 'entity_reference' && (
                                 <select value={attr.referencedTemplateId || ''} onChange={e => updateAttribute(attr.id, { referencedTemplateId: e.target.value })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 md:col-span-2">
                                     <option value="">-- Select Template --</option>
-                                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    {allTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                 </select>
                             )}
                         </div>
                     ))}
                     <button onClick={addAttribute} className="w-full bg-gray-700 hover:bg-gray-600 text-cyan-300 font-bold py-2 px-4 rounded transition duration-300">Add Attribute</button>
                 </div>
+                
+                {inheritedAttributes.length > 0 && (
+                 <div className="space-y-2 pt-4 border-t border-gray-700">
+                    <h4 className="text-lg font-semibold text-gray-400">Inherited Attributes</h4>
+                    {inheritedAttributes.map(({definition, sourceName}) => (
+                        <div key={definition.id} className="bg-gray-900/70 p-2 rounded-md text-sm">
+                            <span className="text-gray-300">{definition.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">({definition.type})</span>
+                            <span className="text-xs text-cyan-400 float-right">from {sourceName}</span>
+                        </div>
+                    ))}
+                 </div>
+                )}
+
 
                 <div className="space-y-4 pt-4 border-t border-gray-700">
-                    <h4 className="text-lg font-semibold text-gray-300">Included Stuff</h4>
-                    {(localTemplate.includedStuff || []).map(included => {
+                    <h4 className="text-lg font-semibold text-gray-300">Own Included Stuff</h4>
+                    {(template.includedStuff || []).map(included => {
                        const stuffSet = gameData.stuff.find(s => s.id === included.setId);
                        if (!stuffSet) return null;
                        const includedItems = stuffSet.items.filter(i => included.itemIds.includes(i.id));
@@ -186,17 +380,32 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ initialTemplate,
                         ))}
                     </select>
                 </div>
+                 {inheritedStuff.length > 0 && (
+                     <div className="space-y-2 pt-4 border-t border-gray-700">
+                        <h4 className="text-lg font-semibold text-gray-400">Inherited Stuff</h4>
+                        {inheritedStuff.map(({stuff, sourceName}) => {
+                             const stuffSet = gameData.stuff.find(ss => ss.id === stuff.setId);
+                             if (!stuffSet) return null;
+                             return (
+                                 <div key={stuff.setId} className="bg-gray-900/70 p-2 rounded-md text-sm">
+                                     <span className="text-teal-300">{stuffSet.name}</span>
+                                     <span className="text-xs text-cyan-400 float-right">from {sourceName}</span>
+                                 </div>
+                             );
+                        })}
+                     </div>
+                )}
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-gray-700 bg-gray-800/50">
-                <button onClick={onCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={() => onSave(localTemplate)} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
+                <button onClick={handleCancel} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSaveChanges} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Changes</button>
             </footer>
 
             {isItemSelectionOpen && (
               <ItemSelectionModal
                 stuffSetId={isItemSelectionOpen}
                 gameData={gameData}
-                selectedItemIds={(localTemplate.includedStuff || []).find(is => is.setId === isItemSelectionOpen)?.itemIds || []}
+                selectedItemIds={(template.includedStuff || []).find(is => is.setId === isItemSelectionOpen)?.itemIds || []}
                 onSave={(newItemIds) => handleSaveItemSelection(isItemSelectionOpen, newItemIds)}
                 onClose={() => setIsItemSelectionOpen(null)}
               />
