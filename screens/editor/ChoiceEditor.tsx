@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome } from '../../types';
 import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
@@ -10,6 +11,7 @@ import { debugService } from '../../services/debugService';
 import { OutcomeEditor } from './OutcomeEditor';
 import { PlusIcon } from '../../components/icons/PlusIcon';
 import { HelpTooltip } from '../../components/HelpTooltip';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 
 
 interface ChoiceEditorProps {
@@ -326,47 +328,46 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
             <header className="p-4 border-b border-[var(--border-primary)]">
                 <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{isNew ? 'Creating New Scene' : `Editing Scene: ${initialChoice.name}`}</h2>
             </header>
-            <main className="flex-grow p-6 space-y-6 overflow-y-auto">
-                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Name (for Editor)</label>
-                        <HelpTooltip title="Scene Name" content="The name of this scene as it appears in the editor's scene list. This is for your organizational purposes and is not shown to the player." />
+            <main className="flex-grow p-6 space-y-8 overflow-y-auto">
+                <CollapsibleSection title="Core Details & Background">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Name (for Editor)</label>
+                            <HelpTooltip title="Scene Name" content="The name of this scene as it appears in the editor's scene list. This is for your organizational purposes and is not shown to the player." />
+                        </div>
+                        <input type="text" value={localChoice.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                     </div>
-                    <input type="text" value={localChoice.name} onChange={e => updateField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
-                </div>
-                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Description</label>
-                        <HelpTooltip title="Scene Description" content="This is the main narrative text for the scene, which is displayed to the player. It sets the context for the choice or continues the story." />
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Scene Description</label>
+                            <HelpTooltip title="Scene Description" content="This is the main narrative text for the scene, which is displayed to the player. It sets the context for the choice or continues the story." />
+                        </div>
+                        <textarea value={localChoice.description} onChange={e => updateField('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                     </div>
-                    <textarea value={localChoice.description} onChange={e => updateField('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
-                </div>
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AI Background Prompt</label>
-                        <HelpTooltip title="AI Background Prompt" content="Write a detailed, descriptive prompt for the AI to generate a background image for this scene. Mention themes (e.g., cyberpunk, noir), colors, lighting, and subject matter for best results." />
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AI Background Prompt</label>
+                            <HelpTooltip title="AI Background Prompt" content="Write a detailed, descriptive prompt for the AI to generate a background image for this scene. Mention themes (e.g., cyberpunk, noir), colors, lighting, and subject matter for best results." />
+                        </div>
+                        <textarea value={localChoice.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
+                        <div className="flex space-x-2 mt-2">
+                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">
+                                {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
+                            </button>
+                            <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Background</button>
+                            <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
+                            {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
+                        </div>
                     </div>
-                    <textarea value={localChoice.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
-                    <div className="flex space-x-2 mt-2">
-                        <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition duration-300">
-                            {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
-                        </button>
-                        <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Background</button>
-                        <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
-                         {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
-                    </div>
-                </div>
-
-                <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                    <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Styling</legend>
+                </CollapsibleSection>
+                
+                <CollapsibleSection title="Scene Styling">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <StyleSelect label="Text Position" help="Sets the vertical alignment of the scene text (top, middle, or bottom)." value={styles.textPosition} onChange={e => updateStyle('textPosition', e.target.value)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></StyleSelect>
                         <StyleSelect label="Text Alignment" help="Sets the horizontal alignment of the scene text (left, center, or right)." value={styles.textAlign} onChange={e => updateStyle('textAlign', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
                         <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <label className="block text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Text Color Class</label>
-                                <HelpTooltip title="Text Color Class" content="Controls the color of the main description text. Use Tailwind CSS classes (e.g., 'text-white', 'text-cyan-200')." />
-                            </div>
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Text Color Class</label>
+                            <HelpTooltip title="Text Color Class" content="Controls the color of the main description text. Use Tailwind CSS classes (e.g., 'text-white', 'text-cyan-200')." />
                             <input type="text" value={styles.textColor} onChange={e => updateStyle('textColor', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g. text-white"/>
                         </div>
                         <StyleSelect label="Font Family" help="Sets the font style for the scene's text." value={styles.fontFamily} onChange={e => updateStyle('fontFamily', e.target.value)}><option value="sans">Sans-Serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></StyleSelect>
@@ -378,17 +379,14 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                         <div className="grid grid-cols-[2fr_1fr] gap-2"><StyleSelect wrapperClassName="col-span-2" help="Controls how this scene appears and the previous one disappears." label="Scene Transition" value={styles.cardTransition} onChange={e => updateStyle('cardTransition', e.target.value)}><option value="fade">Fade</option><option value="dissolve">Dissolve</option><option value="slide-left">Slide Left</option><option value="slide-up">Slide Up</option><option value="zoom-in">Zoom In</option></StyleSelect><StyleNumberInput wrapperClassName="col-span-2" label="Duration (s)" value={styles.cardTransitionDuration} onChange={e => updateStyle('cardTransitionDuration', e.target.valueAsNumber)} /></div>
                         <div className="grid grid-cols-2 gap-2"><StyleSelect wrapperClassName="col-span-2" label="Text Animation" help="Controls how the main description text appears on screen." value={styles.textAnimation} onChange={e => updateStyle('textAnimation', e.target.value)}><option value="fade-in">Fade In</option><option value="rise-up">Rise Up</option><option value="typewriter">Typewriter</option><option value="none">None</option></StyleSelect><StyleNumberInput label="Duration (s)" value={styles.textAnimationDuration} onChange={e => updateStyle('textAnimationDuration', e.target.valueAsNumber)} /><StyleNumberInput label="Delay (s)" value={styles.textAnimationDelay} onChange={e => updateStyle('textAnimationDelay', e.target.valueAsNumber)} /></div>
                     </div>
-                 </fieldset>
+                </CollapsibleSection>
 
-                 <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                    <div className="flex items-center gap-2">
-                        <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] -mb-2 px-1">Foreground Image</legend>
-                        <HelpTooltip title="Foreground Image" content="Upload an image (ideally with a transparent background, like a PNG) to be layered on top of the background. This is great for character sprites, objects, or UI elements." />
-                    </div>
+                <CollapsibleSection title="Foreground Image">
+                    <HelpTooltip title="Foreground Image" content="Upload an image (ideally with a transparent background, like a PNG) to be layered on top of the background. This is great for character sprites, objects, or UI elements." />
                     <div className="flex space-x-2">
-                        <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Foreground</button>
+                        <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Foreground</button>
                         <input type="file" accept="image/*" ref={fgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'foregroundImageBase64')} className="hidden"/>
-                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
                     </div>
                     {localChoice.foregroundImageBase64 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -402,16 +400,15 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                              </div>
                         </div>
                     )}
-                 </fieldset>
+                </CollapsibleSection>
                 
-                <fieldset className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                    <legend className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] px-1">Logic & Navigation</legend>
+                <CollapsibleSection title="Logic & Navigation">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Player Prompt</label>
                             <HelpTooltip title="Player Prompt" content="This is the question or statement presented to the player when they have to make a choice. If you leave this field blank, the scene will be treated as a linear narrative beat, and a single 'Continue' button will be shown instead of options." />
                         </div>
-                        <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="(Optional: Leave blank for a linear scene)"/>
+                        <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="(Optional: Leave blank for a linear scene)"/>
                     </div>
                     
                     {localChoice.prompt ? (
@@ -432,10 +429,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                         <div key={opt.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md border border-[var(--border-primary)] space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex-grow mr-2">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <label className="text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Option Text</label>
-                                                        <HelpTooltip title="Option Text" content="This is the text the player will see and click on for this choice." />
-                                                    </div>
+                                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Option Text</label>
                                                     <input type="text" value={opt.text} onChange={e => updateStaticOption(opt.id, { text: e.target.value })} placeholder="Option Text" className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
                                                 </div>
                                                 <button onClick={() => removeStaticOption(opt.id)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-danger)] self-end mb-2"><TrashIcon className="w-4 h-4"/></button>
@@ -457,7 +451,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                                             </div>
                                                         ))}
                                                     </div>
-                                                    <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Condition</button>
+                                                    <button onClick={() => setEditingConditionState({ type: 'static', optionId: opt.id, condition: null})} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Condition</button>
                                                 </div>
                                                 <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
                                                     <div className="flex items-center gap-2 mb-2">
@@ -475,7 +469,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                                             </div>
                                                         ))}
                                                     </div>
-                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                                    <button onClick={() => setEditingOutcomeState({ type: 'static', optionId: opt.id, outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
                                                 </div>
                                             </div>
                                             <div>
@@ -491,7 +485,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                             </div>
                                         </div>
                                     ))}
-                                    <button onClick={addStaticOption} className="mt-4 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Static Option</button>
+                                    <button onClick={addStaticOption} className="mt-4 w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Static Option</button>
                                 </div>
                             )}
 
@@ -508,10 +502,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                         {gameData.templates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </StyleSelect>
                                     <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <label className="text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Option Text Template</label>
-                                            <HelpTooltip title="Option Text Template" content="Define how the text for each generated option will look. You can use placeholders to insert data from the entity that generated the option. Available placeholders: {entity.name}, {template.name}, and {entity.attributeValues.ATTRIBUTE_ID}." />
-                                        </div>
+                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Option Text Template</label>
                                         <input 
                                             type="text" 
                                             value={localChoice.dynamicConfig.optionTemplate.text}
@@ -535,7 +526,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                                     </div>
                                                 ))}
                                             </div>
-                                            <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Filter</button>
+                                            <button onClick={() => setEditingConditionState({ type: 'dynamic', condition: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Filter</button>
                                         </div>
                                         <div className="pt-2 border-t border-[var(--border-primary)] md:border-t-0">
                                             <div className="flex items-center gap-2 mb-2">
@@ -553,7 +544,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                                     </div>
                                                 ))}
                                             </div>
-                                            <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-accent)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
+                                            <button onClick={() => setEditingOutcomeState({ type: 'dynamic', outcome: null })} className="text-[length:var(--font-size-sm)] mt-2 text-[var(--text-primary)] hover:opacity-80 w-full text-left flex items-center gap-1"><PlusIcon className="w-4 h-4"/> Add Outcome</button>
                                         </div>
                                     </div>
                                     <StyleSelect 
@@ -581,7 +572,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                             </StyleSelect>
                         </div>
                     )}
-                </fieldset>
+                </CollapsibleSection>
 
                 <div>
                     <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] mb-2">Live Preview</h4>

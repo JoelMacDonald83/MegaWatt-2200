@@ -1,7 +1,6 @@
-
 // FIX: Import 'useCallback' from 'react' to fix a 'Cannot find name' error.
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle } from '../types';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { PlayIcon } from '../components/icons/PlayIcon';
@@ -355,21 +354,6 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
 
 const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
-    const timeoutRef = useRef<number | null>(null);
-
-    const resetTimeout = useCallback(() => {
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
-    }, []);
-
-    useEffect(() => {
-        resetTimeout();
-        timeoutRef.current = window.setTimeout(() => {
-            setCurrentIndex((prevIndex) => (prevIndex === images.length - 1 ? 0 : prevIndex + 1));
-        }, 5000);
-        return () => resetTimeout();
-    }, [currentIndex, images.length, resetTimeout]);
 
     const goToPrevious = () => {
         const isFirstSlide = currentIndex === 0;
@@ -415,6 +399,28 @@ const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
     );
 };
 
+const parseCardText = (text: string, game: GameData): string => {
+    if (!text) return '';
+    return text
+        .replace(/{game.gameTitle}/g, game.gameTitle)
+        .replace(/{game.colonyName}/g, game.colonyName);
+};
+
+const textStyleToCss = (style: TextStyle): React.CSSProperties => {
+    const fontSizes: Record<TextStyle['fontSize'], string> = {
+        'xs': '0.75rem',
+        'sm': '0.875rem',
+        'base': '1rem',
+        'lg': '1.125rem',
+        'xl': '1.25rem'
+    };
+    return {
+        color: style.color,
+        fontSize: fontSizes[style.fontSize],
+        textAlign: style.textAlign,
+    };
+};
+
 const GamePreviewCard: React.FC<{
     game: GameData;
     layout: 'grid' | 'list';
@@ -423,8 +429,8 @@ const GamePreviewCard: React.FC<{
 }> = ({ game, layout, cardStyle, onSelectGame }) => {
 
     const hoverClasses = {
-        lift: 'group transform hover:-translate-y-1 transition-transform duration-300',
-        glow: 'transition-shadow duration-300 hover:shadow-lg hover:shadow-cyan-500/20',
+        lift: 'group transition-all duration-300 ring-1 ring-transparent hover:ring-[var(--border-accent)] hover:shadow-lg hover:shadow-[var(--text-accent)]/20',
+        glow: 'transition-shadow duration-300 hover:shadow-lg hover:shadow-[var(--text-accent)]/20',
         none: '',
     }[cardStyle.hoverEffect];
 
@@ -442,10 +448,15 @@ const GamePreviewCard: React.FC<{
         borderStyle: 'solid',
     };
 
+    const coverImage = useMemo(() => {
+        const images = game.menuSettings.showcaseImages || [];
+        return images.find(img => img.id === game.cardCoverImageId) || images[0];
+    }, [game.cardCoverImageId, game.menuSettings.showcaseImages]);
+
     const imageContent = cardStyle.imageDisplay === 'slider' && game.menuSettings.showcaseImages?.length > 0 ? (
         <ImageSlider images={game.menuSettings.showcaseImages} />
     ) : (
-        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: game.menuSettings.showcaseImages?.[0]?.base64 ? `url(${game.menuSettings.showcaseImages[0].base64})` : 'none', backgroundColor: '#111' }} />
+        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: coverImage?.base64 ? `url(${coverImage.base64})` : 'none', backgroundColor: '#111' }} />
     );
 
     if (layout === 'grid') {
@@ -455,8 +466,8 @@ const GamePreviewCard: React.FC<{
                     {imageContent}
                 </div>
                 <div className="p-4 flex flex-col flex-grow">
-                    <h2 className="text-xl font-bold" style={{ color: cardStyle.titleColor }}>{game.gameTitle}</h2>
-                    {(cardStyle.showColonyName) && <p className="text-sm mt-1" style={{ color: cardStyle.textColor }}>{game.colonyName}</p>}
+                    <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
+                    <p className="mt-1" style={textStyleToCss(cardStyle.bodyStyle)}>{parseCardText(cardStyle.bodyText, game)}</p>
                     <button onClick={() => onSelectGame(game.id)} className="w-full mt-auto font-bold py-2 px-4 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
                         Launch
                     </button>
@@ -472,8 +483,8 @@ const GamePreviewCard: React.FC<{
                 {imageContent}
             </div>
             <div className="p-4 flex flex-col flex-grow">
-                <h2 className="text-xl font-bold" style={{ color: cardStyle.titleColor }}>{game.gameTitle}</h2>
-                {(cardStyle.showColonyName) && <p className="text-sm mt-1 mb-3" style={{ color: cardStyle.textColor }}>{game.colonyName}</p>}
+                 <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
+                 <p className="mt-1" style={textStyleToCss(cardStyle.bodyStyle)}>{parseCardText(cardStyle.bodyText, game)}</p>
             </div>
              <div className="p-4 flex-shrink-0">
                 <button onClick={() => onSelectGame(game.id)} className="font-bold py-2 px-8 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
@@ -487,16 +498,17 @@ const GamePreviewCard: React.FC<{
 const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameData[], onSelectGame: (gameId: string) => void}> = ({ settings, games, onSelectGame }) => {
     const layout = settings.gameListLayout || 'grid';
     const cardStyle = useMemo((): GameCardStyle => ({
-      showColonyName: true,
       imageAspectRatio: '16/9',
       imageDisplay: 'single',
       hoverEffect: 'lift',
-      backgroundColor: '#1f293780', // bg-gray-800/50
-      borderColor: '#4b5563', // border-gray-600
-      titleColor: '#ffffff', // text-white
-      textColor: '#9ca3af', // text-gray-400
-      buttonColor: '#22d3ee', // bg-cyan-400
-      buttonTextColor: '#111827', // text-gray-900
+      backgroundColor: '#1f293780',
+      borderColor: '#4b5563',
+      headerText: '{game.gameTitle}',
+      headerStyle: { color: '#ffffff', fontSize: 'lg', textAlign: 'left' },
+      bodyText: '{game.colonyName}',
+      bodyStyle: { color: '#9ca3af', fontSize: 'sm', textAlign: 'left' },
+      buttonColor: '#22d3ee',
+      buttonTextColor: '#111827',
       ...(settings.gameCardStyle || {}),
     }), [settings.gameCardStyle]);
     

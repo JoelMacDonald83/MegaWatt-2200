@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout } from '../types';
+import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
 import { CubeTransparentIcon } from '../components/icons/CubeTransparentIcon';
 import { RectangleStackIcon } from '../components/icons/RectangleStackIcon';
@@ -32,6 +31,7 @@ import { ToggleSwitch } from '../components/ToggleSwitch';
 import { ArrowUpIcon } from '../components/icons/ArrowUpIcon';
 import { ArrowDownIcon } from '../components/icons/ArrowDownIcon';
 import { MegaWattGame } from './MegaWattGame';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 
 type EditorTabs = 'game_menu' | 'gameplay' | 'blueprints' | 'entities';
 type TopLevelTabs = 'launcher' | 'games';
@@ -74,7 +74,9 @@ const ShowcaseImageEditor: React.FC<{
     onUpdate: (images: ShowcaseImage[]) => void,
     onGenerate: (prompt: string, onUpdateBase64: (base64: string) => void) => void,
     isGenerating: string | null,
-}> = ({ images, onUpdate, onGenerate, isGenerating }) => {
+    cardCoverImageId?: string,
+    onSetCoverImage: (id: string) => void,
+}> = ({ images, onUpdate, onGenerate, isGenerating, cardCoverImageId, onSetCoverImage }) => {
     
     const handleUpdatePrompt = (id: string, prompt: string) => {
         onUpdate(images.map(img => img.id === id ? {...img, prompt} : img));
@@ -126,8 +128,15 @@ const ShowcaseImageEditor: React.FC<{
                             </button>
                         </div>
                         <div className="flex flex-col justify-between items-center">
-                            <div className="flex flex-col">
+                             <div className="flex flex-col">
                                 <button onClick={() => handleMoveImage(index, 'up')} disabled={index === 0} className="p-1 disabled:opacity-30"><ArrowUpIcon className="w-4 h-4" /></button>
+                                <button
+                                    onClick={() => onSetCoverImage(image.id)}
+                                    className={`p-1 rounded-full transition-colors ${cardCoverImageId === image.id ? 'text-yellow-400' : 'text-gray-500 hover:bg-yellow-400/20'}`}
+                                    title="Set as card cover image"
+                                >
+                                    <StarIcon className="w-4 h-4" fill={cardCoverImageId === image.id ? 'currentColor' : 'none'} stroke="currentColor" />
+                                </button>
                                 <button onClick={() => handleMoveImage(index, 'down')} disabled={index === images.length - 1} className="p-1 disabled:opacity-30"><ArrowDownIcon className="w-4 h-4" /></button>
                             </div>
                             <button onClick={() => handleRemoveImage(image.id)} className="p-1"><TrashIcon className="w-4 h-4 text-red-500/80 hover:text-red-400"/></button>
@@ -135,7 +144,7 @@ const ShowcaseImageEditor: React.FC<{
                     </div>
                 </div>
             ))}
-            <button onClick={handleAddImage} className="w-full flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300">
+            <button onClick={handleAddImage} className="w-full flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300">
                 <PlusIcon className="w-4 h-4" /> Add Showcase Image
             </button>
         </div>
@@ -161,7 +170,7 @@ const NewsListEditor: React.FC<{
                 </div>
             </div>
         ))}
-        <button onClick={onAdd} className="w-full flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300">
+        <button onClick={onAdd} className="w-full flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300">
             <PlusIcon className="w-4 h-4" /> Add News Item
         </button>
     </div>
@@ -181,8 +190,8 @@ const GameEditor: React.FC<{
     const [deletionModalState, setDeletionModalState] = useState<DeletionModalState>({ type: 'none' });
     const [editingState, setEditingState] = useState<EditingState>({ mode: 'none' });
     const [toast, setToast] = useState({ show: false, message: '' });
-    const [newMenuTag, setNewMenuTag] = useState('');
     const [editingNewsItem, setEditingNewsItem] = useState<NewsItem | { isNew: true } | null>(null);
+    const [newMenuTag, setNewMenuTag] = useState('');
 
     const showToast = (message: string) => {
         debugService.log("GameEditor: Showing toast", { message });
@@ -199,17 +208,18 @@ const GameEditor: React.FC<{
             menuSettings: { ...gameData.menuSettings, [field]: value },
         });
     };
-
+    
     const handleAddMenuTag = () => {
         if (newMenuTag.trim() && !gameData.menuSettings.tags.includes(newMenuTag.trim())) {
             updateMenuSettings('tags', [...gameData.menuSettings.tags, newMenuTag.trim()]);
             setNewMenuTag('');
         }
     };
+
     const handleRemoveMenuTag = (tagToRemove: string) => {
         updateMenuSettings('tags', gameData.menuSettings.tags.filter(t => t !== tagToRemove));
     };
-    
+
     const handleSaveNewsItem = (newsItem: NewsItem) => {
       const news = gameData.menuSettings.news || [];
       const existingIndex = news.findIndex(n => n.id === newsItem.id);
@@ -385,9 +395,9 @@ const GameEditor: React.FC<{
                   ))}
               </div>
               <div className="p-2 border-t border-[var(--border-primary)]">
-                  {activeTab === 'gameplay' && <button onClick={() => handleAddItem('choice')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold">New Scene</button>}
-                  {activeTab === 'blueprints' && <button onClick={() => handleAddItem('template')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold">New Blueprint</button>}
-                  {activeTab === 'entities' && <button onClick={() => handleAddItem('entity')} disabled={entityFilter === 'all'} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold disabled:bg-[var(--bg-panel)] disabled:text-[var(--text-secondary)] disabled:cursor-not-allowed">New Entity</button>}
+                  {activeTab === 'gameplay' && <button onClick={() => handleAddItem('choice')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">New Scene</button>}
+                  {activeTab === 'blueprints' && <button onClick={() => handleAddItem('template')} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">New Blueprint</button>}
+                  {activeTab === 'entities' && <button onClick={() => handleAddItem('entity')} disabled={entityFilter === 'all'} className="w-full text-center p-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold disabled:bg-[var(--bg-panel)] disabled:text-[var(--text-secondary)] disabled:cursor-not-allowed">New Entity</button>}
               </div>
             </aside>
           )}
@@ -397,27 +407,30 @@ const GameEditor: React.FC<{
                 <div className="flex-1 p-8 overflow-y-auto">
                     <h1 className="text-[length:var(--font-size-3xl)] font-bold text-[var(--text-accent)] mb-6">Game Menu Settings for {gameData.gameTitle}</h1>
                      <div className="max-w-2xl space-y-8">
-                        <div><label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Colony Name</label><input type="text" value={gameData.colonyName} onChange={handleColonyNameChange} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
-                        <div><label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Menu Description</label><textarea value={gameData.menuSettings.description} onChange={e => updateMenuSettings('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
-                        <div>
-                            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Tags</label>
-                            <div className="flex flex-wrap gap-2 mb-2">{(gameData.menuSettings.tags || []).map(tag => <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-xs font-medium px-2 py-1 rounded-full">{tag}<button onClick={() => handleRemoveMenuTag(tag)} className="ml-1.5 -mr-0.5 w-4 h-4 rounded-full text-[var(--text-accent)] hover:bg-red-500/50">&times;</button></span>)}</div>
-                            <div className="flex gap-2"><input type="text" placeholder="Add a tag..." value={newMenuTag} onChange={e => setNewMenuTag(e.target.value)} className="flex-grow bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/><button onClick={handleAddMenuTag} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded">Add</button></div>
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <label className="block text-sm font-medium text-[var(--text-secondary)]">Showcase Images</label>
-                                <HelpTooltip title="Showcase Images" content="Manage the images for this game. The first image is used for the game's menu background. If the 'Image Slider' is enabled in the launcher settings, these images will be shown as a carousel on the game's preview card." />
+                        <CollapsibleSection title="Core Details">
+                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Colony Name</label><input type="text" value={gameData.colonyName} onChange={handleColonyNameChange} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Menu Description</label><textarea value={gameData.menuSettings.description} onChange={e => updateMenuSettings('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                            <div>
+                                <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Tags</label>
+                                <div className="flex flex-wrap gap-2 mb-2">{(gameData.menuSettings.tags || []).map(tag => <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-xs font-medium px-2 py-1 rounded-full">{tag}<button onClick={() => handleRemoveMenuTag(tag)} className="ml-1.5 -mr-0.5 w-4 h-4 rounded-full text-[var(--text-accent)] hover:bg-red-500/50">&times;</button></span>)}</div>
+                                <div className="flex gap-2"><input type="text" placeholder="Add a tag..." value={newMenuTag} onChange={e => setNewMenuTag(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMenuTag(); } }} className="flex-grow bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/><button onClick={handleAddMenuTag} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded">Add</button></div>
                             </div>
+                        </CollapsibleSection>
+                        <CollapsibleSection title="Showcase & Cover Images">
+                            <HelpTooltip title="Showcase Images" content="Manage the images for this game. One can be selected as the card's cover image by clicking the star icon. If 'Image Slider' is enabled in the launcher settings, these images will be shown as a carousel on the game's preview card." />
                            <ShowcaseImageEditor 
                                 images={gameData.menuSettings.showcaseImages || []}
                                 onUpdate={(images) => updateMenuSettings('showcaseImages', images)}
                                 onGenerate={onGenerateImage}
                                 isGenerating={isGenerating}
+                                cardCoverImageId={gameData.cardCoverImageId}
+                                onSetCoverImage={(id) => onCommitGameChange({ ...gameData, cardCoverImageId: id })}
                            />
-                        </div>
-                        <div><label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">News & Updates</label><NewsListEditor news={gameData.menuSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteNewsItem} /></div>
-                        <div><label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Credits</label><textarea value={gameData.menuSettings.credits} onChange={e => updateMenuSettings('credits', e.target.value)} rows={6} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                        </CollapsibleSection>
+                        <CollapsibleSection title="News & Credits">
+                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">News & Updates</label><NewsListEditor news={gameData.menuSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteNewsItem} /></div>
+                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Credits</label><textarea value={gameData.menuSettings.credits} onChange={e => updateMenuSettings('credits', e.target.value)} rows={6} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                        </CollapsibleSection>
                      </div>
                 </div>
             ) : (
@@ -451,7 +464,7 @@ const ColorInput: React.FC<{
     return (
         <div>
             <div className="flex items-center gap-2 mb-1">
-                <label className="block text-xs font-medium text-[var(--text-secondary)]">{label}</label>
+                <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">{label}</label>
                 {help && <HelpTooltip title={label} content={help} />}
             </div>
             <div className="flex items-center bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md">
@@ -477,6 +490,27 @@ const ColorInput: React.FC<{
                     }}
                     className="absolute opacity-0 w-0 h-0"
                 />
+            </div>
+        </div>
+    );
+};
+
+const TextStyleEditor: React.FC<{
+    value: TextStyle;
+    onChange: (value: TextStyle) => void;
+}> = ({ value, onChange }) => {
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <ColorInput label="Color" value={value.color} onChange={color => onChange({ ...value, color })} />
+                <StyleSelect label="Font Size" value={value.fontSize} onChange={e => onChange({ ...value, fontSize: e.target.value as TextStyle['fontSize'] })}>
+                    <option value="xs">X-Small</option>
+                    <option value="sm">Small</option>
+                    <option value="base">Base</option>
+                    <option value="lg">Large</option>
+                    <option value="xl">X-Large</option>
+                </StyleSelect>
+                <StyleRadio label="Text Align" name="text-align" value={value.textAlign} onChange={e => onChange({ ...value, textAlign: e.target.value as TextStyle['textAlign'] })} options={[{value: 'left', label: 'Left'}, {value: 'center', label: 'Center'}, {value: 'right', label: 'Right'}]} />
             </div>
         </div>
     );
@@ -661,11 +695,10 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                          <div className="p-8 overflow-y-auto">
                             <h1 className="text-[length:var(--font-size-3xl)] font-bold text-[var(--text-accent)] mb-6">Main Launcher Settings</h1>
                              <div className="max-w-3xl space-y-8">
-                                <fieldset className="space-y-4 p-4 border border-[var(--border-primary)] rounded-lg">
-                                    <legend className="text-lg font-semibold text-[var(--text-primary)] -mb-2 px-1">Branding</legend>
-                                    <div><label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Company Name</label><input type="text" value={projectData.launcherSettings.companyName} onChange={e => updateLauncherSettings({ companyName: e.target.value })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                                <CollapsibleSection title="Branding">
+                                    <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Company Name</label><input type="text" value={projectData.launcherSettings.companyName} onChange={e => updateLauncherSettings({ companyName: e.target.value })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
                                     <div>
-                                        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Launcher Background Image</label>
+                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-2">Launcher Background Image</label>
                                         <div className="w-full aspect-video bg-[var(--bg-input)] rounded-md border-2 border-dashed border-[var(--border-secondary)] flex items-center justify-center" style={{ backgroundImage: `url(${projectData.launcherSettings.backgroundImageBase64})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                                             {!projectData.launcherSettings.backgroundImageBase64 && <span className="text-[var(--text-tertiary)]">No Image Set</span>}
                                         </div>
@@ -677,9 +710,8 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                             <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>
                                         </div>
                                     </div>
-                                </fieldset>
-                                 <fieldset className="space-y-4 p-4 border border-[var(--border-primary)] rounded-lg">
-                                    <legend className="text-lg font-semibold text-[var(--text-primary)] -mb-2 px-1">Game List Container</legend>
+                                </CollapsibleSection>
+                                 <CollapsibleSection title="Game List Container">
                                     <StyleRadio label="Background Type" name="gamelist-bg-type" value={launcherListStyle.backgroundType || 'transparent'} onChange={(e) => updateLauncherListStyle({ backgroundType: e.target.value as GameListBackgroundType })} options={[{value: 'transparent', label: 'Transparent'}, {value: 'solid', label: 'Solid'}, {value: 'gradient', label: 'Gradient'}]} />
                                     {launcherListStyle.backgroundType === 'solid' && (
                                         <ColorInput label="Background Color" value={launcherListStyle.backgroundColor1 || '#1f293780'} onChange={val => updateLauncherListStyle({ backgroundColor1: val })} />
@@ -691,36 +723,63 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                         </div>
                                     )}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Padding (px)</label><input type="number" value={launcherListStyle.padding || 0} onChange={e => updateLauncherListStyle({ padding: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-sm" /></div>
-                                        <div><label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Border Radius (px)</label><input type="number" value={launcherListStyle.borderRadius || 0} onChange={e => updateLauncherListStyle({ borderRadius: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-sm" /></div>
+                                        <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Padding (px)</label><input type="number" value={launcherListStyle.padding || 0} onChange={e => updateLauncherListStyle({ padding: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
+                                        <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Border Radius (px)</label><input type="number" value={launcherListStyle.borderRadius || 0} onChange={e => updateLauncherListStyle({ borderRadius: e.target.valueAsNumber })} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" /></div>
                                     </div>
-                                </fieldset>
-                                 <fieldset className="space-y-4 p-4 border border-[var(--border-primary)] rounded-lg">
-                                    <legend className="text-lg font-semibold text-[var(--text-primary)] -mb-2 px-1">Game Card Display</legend>
-                                     <StyleRadio label="Layout" name="gamelist-layout" value={projectData.launcherSettings.gameListLayout || 'grid'} onChange={(e) => updateLauncherSettings({ gameListLayout: e.target.value as GameListLayout })} options={[{value: 'grid', label: 'Grid'}, {value: 'list', label: 'List'}]} help="Choose how the list of games is displayed in the launcher." />
-                                    <div className="p-3 bg-[var(--bg-input)]/50 rounded-md border border-[var(--border-secondary)] space-y-4">
-                                         <StyleRadio label="Image Display" name="image-display" value={launcherCardStyle.imageDisplay || 'single'} onChange={(e) => updateLauncherCardStyle({ imageDisplay: e.target.value as 'single' | 'slider' })} options={[{value: 'single', label: 'Single Image'}, {value: 'slider', label: 'Image Slider'}]} help="Show a static image or an interactive image carousel for each game." />
-                                        <ToggleSwitch label="Show Colony Name" enabled={launcherCardStyle.showColonyName ?? true} onChange={(val) => updateLauncherCardStyle({ showColonyName: val })} />
-                                        <StyleSelect label="Image Aspect Ratio" value={launcherCardStyle.imageAspectRatio || '16/9'} onChange={e => updateLauncherCardStyle({ imageAspectRatio: e.target.value as GameCardStyle['imageAspectRatio']})} help="The shape of the preview image for each game. 'Auto' uses a fixed height.">
-                                            <option value="16/9">16:9 (Widescreen)</option><option value="4/3">4:3 (Standard)</option><option value="1/1">1:1 (Square)</option><option value="auto">Auto (Fixed Height)</option>
-                                        </StyleSelect>
-                                        <StyleSelect label="Hover Effect" value={launcherCardStyle.hoverEffect || 'lift'} onChange={e => updateLauncherCardStyle({ hoverEffect: e.target.value as GameCardStyle['hoverEffect'] })} help="The visual effect when the user hovers their mouse over a game card.">
-                                            <option value="lift">Lift</option><option value="glow">Glow</option><option value="none">None</option>
-                                        </StyleSelect>
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-[var(--border-secondary)]">
-                                            <ColorInput label="Background" value={launcherCardStyle.backgroundColor || '#1f293780'} onChange={val => updateLauncherCardStyle({ backgroundColor: val })} />
-                                            <ColorInput label="Border" value={launcherCardStyle.borderColor || '#4b5563'} onChange={val => updateLauncherCardStyle({ borderColor: val })} />
-                                            <ColorInput label="Title Text" value={launcherCardStyle.titleColor || '#ffffff'} onChange={val => updateLauncherCardStyle({ titleColor: val })} />
-                                            <ColorInput label="Subtitle Text" value={launcherCardStyle.textColor || '#9ca3af'} onChange={val => updateLauncherCardStyle({ textColor: val })} />
-                                            <ColorInput label="Button BG" value={launcherCardStyle.buttonColor || '#22d3ee'} onChange={val => updateLauncherCardStyle({ buttonColor: val })} />
-                                            <ColorInput label="Button Text" value={launcherCardStyle.buttonTextColor || '#111827'} onChange={val => updateLauncherCardStyle({ buttonTextColor: val })} />
+                                </CollapsibleSection>
+                                 <CollapsibleSection title="Game Card Display">
+                                    <div className="space-y-6">
+                                        <StyleRadio label="Layout" name="gamelist-layout" value={projectData.launcherSettings.gameListLayout || 'grid'} onChange={(e) => updateLauncherSettings({ gameListLayout: e.target.value as GameListLayout })} options={[{value: 'grid', label: 'Grid'}, {value: 'list', label: 'List'}]} help="Choose how the list of games is displayed in the launcher." />
+                                        
+                                        <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Image & Interaction</h4>
+                                            <StyleRadio label="Image Display" name="image-display" value={launcherCardStyle.imageDisplay || 'single'} onChange={(e) => updateLauncherCardStyle({ imageDisplay: e.target.value as 'single' | 'slider' })} options={[{value: 'single', label: 'Single Image'}, {value: 'slider', label: 'Image Slider'}]} help="Show a static image or an interactive image carousel for each game." />
+                                            <StyleSelect label="Image Aspect Ratio" value={launcherCardStyle.imageAspectRatio || '16/9'} onChange={e => updateLauncherCardStyle({ imageAspectRatio: e.target.value as GameCardStyle['imageAspectRatio']})} help="The shape of the preview image for each game. 'Auto' uses a fixed height.">
+                                                <option value="16/9">16:9 (Widescreen)</option><option value="4/3">4:3 (Standard)</option><option value="1/1">1:1 (Square)</option><option value="auto">Auto (Fixed Height)</option>
+                                            </StyleSelect>
+                                            <StyleSelect label="Hover Effect" value={launcherCardStyle.hoverEffect || 'lift'} onChange={e => updateLauncherCardStyle({ hoverEffect: e.target.value as GameCardStyle['hoverEffect'] })} help="The visual effect when the user hovers their mouse over a game card.">
+                                                <option value="lift">Glow & Ring</option><option value="glow">Glow Only</option><option value="none">None</option>
+                                            </StyleSelect>
+                                        </div>
+                                        
+                                        <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Header Content</h4>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                     <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Header Text</label>
+                                                     <HelpTooltip title="Card Header Text" content="The main text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
+                                                </div>
+                                                <textarea value={launcherCardStyle.headerText || ''} onChange={(e) => updateLauncherCardStyle({ headerText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
+                                            </div>
+                                            <TextStyleEditor value={launcherCardStyle.headerStyle!} onChange={headerStyle => updateLauncherCardStyle({ headerStyle })}/>
+                                        </div>
+
+                                         <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">Body Content</h4>
+                                            <div>
+                                                 <div className="flex items-center gap-2 mb-1">
+                                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Body Text</label>
+                                                     <HelpTooltip title="Card Body Text" content="The secondary text for the card. Use placeholders {game.gameTitle} and {game.colonyName} to insert game data automatically." />
+                                                </div>
+                                                <textarea value={launcherCardStyle.bodyText || ''} onChange={(e) => updateLauncherCardStyle({ bodyText: e.target.value })} rows={1} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
+                                            </div>
+                                            <TextStyleEditor value={launcherCardStyle.bodyStyle!} onChange={bodyStyle => updateLauncherCardStyle({ bodyStyle })}/>
+                                        </div>
+
+                                         <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
+                                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-accent)]">General Card Style</h4>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <ColorInput label="Background" value={launcherCardStyle.backgroundColor || '#1f293780'} onChange={val => updateLauncherCardStyle({ backgroundColor: val })} />
+                                                <ColorInput label="Border" value={launcherCardStyle.borderColor || '#4b5563'} onChange={val => updateLauncherCardStyle({ borderColor: val })} />
+                                                <ColorInput label="Button BG" value={launcherCardStyle.buttonColor || '#22d3ee'} onChange={val => updateLauncherCardStyle({ buttonColor: val })} />
+                                                <ColorInput label="Button Text" value={launcherCardStyle.buttonTextColor || '#111827'} onChange={val => updateLauncherCardStyle({ buttonTextColor: val })} />
+                                            </div>
                                         </div>
                                     </div>
-                                </fieldset>
-                               <fieldset className="space-y-4 p-4 border border-[var(--border-primary)] rounded-lg">
-                                   <legend className="text-lg font-semibold text-[var(--text-primary)] -mb-2 px-1">Company News</legend>
+                                </CollapsibleSection>
+                               <CollapsibleSection title="Company News">
                                    <NewsListEditor news={projectData.launcherSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteLauncherNewsItem} />
-                               </fieldset>
+                               </CollapsibleSection>
                              </div>
                         </div>
                         <div className="hidden xl:block p-6 h-full"><LauncherPreview projectData={projectData} /></div>
@@ -742,7 +801,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                         <p className="text-sm text-[var(--text-secondary)]">{game.colonyName}</p>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <button onClick={() => setSelectedGameId(game.id)} className="flex items-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-semibold py-2 px-4 rounded transition duration-300">
+                                        <button onClick={() => setSelectedGameId(game.id)} className="flex items-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold py-2 px-4 rounded transition duration-300">
                                             <PencilIcon className="w-4 h-4" /> Edit
                                         </button>
                                         <button onClick={() => handleDeleteGame(game)} className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-danger)]"><TrashIcon className="w-5 h-5" /></button>

@@ -2,34 +2,34 @@ import React from 'react';
 
 const styles = `
 :root {
-  /* Font Sizes */
-  --font-size-xs: 0.75rem; /* 12px */
-  --font-size-sm: 0.875rem; /* 14px */
-  --font-size-base: 1rem; /* 16px */
-  --font-size-lg: 1.125rem; /* 18px */
-  --font-size-xl: 1.25rem; /* 20px */
-  --font-size-2xl: 1.5rem; /* 24px */
-  --font-size-3xl: 1.875rem; /* 30px */
+  /* Font Sizes - Default is now larger */
+  --font-size-xs: 0.85rem;   /* 13.6px */
+  --font-size-sm: 1rem;      /* 16px */
+  --font-size-base: 1.125rem;/* 18px */
+  --font-size-lg: 1.25rem;   /* 20px */
+  --font-size-xl: 1.4rem;    /* 22.4px */
+  --font-size-2xl: 1.7rem;   /* 27.2px */
+  --font-size-3xl: 2rem;     /* 32px */
 }
 
-body.font-size-small {
-  --font-size-xs: 0.7rem;
-  --font-size-sm: 0.8rem;
-  --font-size-base: 0.9rem;
-  --font-size-lg: 1rem;
-  --font-size-xl: 1.125rem;
-  --font-size-2xl: 1.3rem;
-  --font-size-3xl: 1.6rem;
+body.font-size-small { /* This was the old medium */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
 }
 
-body.font-size-large {
-  --font-size-xs: 0.85rem;
-  --font-size-sm: 1rem;
-  --font-size-base: 1.125rem;
-  --font-size-lg: 1.25rem;
-  --font-size-xl: 1.4rem;
-  --font-size-2xl: 1.7rem;
-  --font-size-3xl: 2rem;
+body.font-size-large { /* This is the new, larger size */
+  --font-size-xs: 1rem;      /* 16px */
+  --font-size-sm: 1.125rem;  /* 18px */
+  --font-size-base: 1.25rem; /* 20px */
+  --font-size-lg: 1.5rem;    /* 24px */
+  --font-size-xl: 1.75rem;   /* 28px */
+  --font-size-2xl: 2rem;     /* 32px */
+  --font-size-3xl: 2.5rem;   /* 40px */
 }
 
 /* Base variables (defaults to dark theme) */
@@ -127,6 +127,24 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Clear default browser outlines and use a more visible, consistent ring */
+input, textarea, select, button {
+  outline: none;
+}
+
+input:focus-visible, 
+textarea:focus-visible, 
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--border-accent);
+  outline-offset: 2px;
+}
+
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-input)] focus:ring-[var(--border-accent)];
+}
+
 `;
 
 export const GlobalStyles = () => {

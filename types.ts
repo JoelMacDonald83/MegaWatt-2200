@@ -201,21 +201,31 @@ export interface GameData {
   templates: Template[];
   entities: Entity[];
   menuSettings: GameMenuSettings;
+  cardCoverImageId?: string;
 }
 
 // -- Launcher-specific types --
 export type GameListLayout = 'grid' | 'list';
 export type GameCardHoverEffect = 'lift' | 'glow' | 'none';
 
+export interface TextStyle {
+  color: string; // hex color
+  fontSize: 'xs' | 'sm' | 'base' | 'lg' | 'xl';
+  textAlign: 'left' | 'center' | 'right';
+}
+
 export interface GameCardStyle {
-  showColonyName: boolean;
   imageAspectRatio: '16/9' | '4/3' | '1/1' | 'auto';
   imageDisplay: 'single' | 'slider';
   hoverEffect: GameCardHoverEffect;
   backgroundColor: string; // hex color
   borderColor: string; // hex color
-  titleColor: string; // hex color
-  textColor: string; // hex color
+  
+  headerText: string;
+  headerStyle: TextStyle;
+  bodyText: string;
+  bodyStyle: TextStyle;
+
   buttonColor: string; // hex color
   buttonTextColor: string; // hex color
 }

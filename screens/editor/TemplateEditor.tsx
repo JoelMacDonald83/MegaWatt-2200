@@ -6,6 +6,7 @@ import { debugService } from '../../services/debugService';
 import { TrashIcon } from '../../components/icons/TrashIcon';
 import { PlusIcon } from '../../components/icons/PlusIcon';
 import { HelpTooltip } from '../../components/HelpTooltip';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 
 interface TemplateEditorProps {
     template: Template;
@@ -230,77 +231,62 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
             <header className="p-4 border-b border-[var(--border-primary)]">
                 <h2 className="text-[length:var(--font-size-xl)] font-bold text-[var(--text-accent)]">{isNew ? `Creating New ${template.isComponent ? 'Component' : 'Template'}` : `Editing: ${template.name}`}</h2>
             </header>
-            <main className="flex-grow p-6 space-y-6 overflow-y-auto">
-                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Name</label>
-                        <HelpTooltip title="Blueprint Name" content="The name for this blueprint. For example, 'Character', 'Vehicle', or 'Facility'." />
+            <main className="flex-grow p-6 space-y-8 overflow-y-auto">
+                <CollapsibleSection title="Core Details">
+                    <div>
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Name</label>
+                        <input type="text" value={template.name} onChange={e => updateSimpleField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                     </div>
-                    <input type="text" value={template.name} onChange={e => updateSimpleField('name', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
-                </div>
-                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Parent Blueprint</label>
-                        <HelpTooltip title="Parent Blueprint (Inheritance)" content="Select another blueprint to be the 'parent' of this one. This blueprint will automatically inherit all attributes from its parent. This is useful for creating specialized types.\n\nExample: You could have a base 'Vehicle' blueprint, with 'Wheeled Vehicle' and 'Flying Vehicle' as children that inherit its basic properties and add their own." />
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Parent Blueprint</label>
+                            <HelpTooltip title="Parent Blueprint (Inheritance)" content="Select another blueprint to be the 'parent' of this one. This blueprint will automatically inherit all attributes from its parent. This is useful for creating specialized types.\n\nExample: You could have a base 'Vehicle' blueprint, with 'Wheeled Vehicle' and 'Flying Vehicle' as children that inherit its basic properties and add their own." />
+                        </div>
+                        <select value={template.parentId || ''} onChange={e => updateSimpleField('parentId', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2">
+                        <option value="">-- No Parent --</option>
+                        {parentTemplateCandidates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
                     </div>
-                    <select value={template.parentId || ''} onChange={e => updateSimpleField('parentId', e.target.value || undefined)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]">
-                      <option value="">-- No Parent --</option>
-                      {parentTemplateCandidates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Description</label>
-                        <HelpTooltip title="Blueprint Description" content="An editor-facing description for this blueprint to help you remember its purpose. This is not shown to the player." />
+                    <div>
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Description</label>
+                        <textarea value={template.description} onChange={e => updateSimpleField('description', e.target.value)} rows={3} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                     </div>
-                    <textarea value={template.description} onChange={e => updateSimpleField('description', e.target.value)} rows={3} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
-                </div>
-                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Tags</label>
-                        <HelpTooltip title="Blueprint Tags" content="Tags are used for organizing your blueprints in the editor. They don't have any in-game effect." />
+                    <div>
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Tags</label>
+                        <div className="flex flex-wrap items-center gap-2 p-2 bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md">
+                            {template.tags.map((tag) => (
+                                <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-[length:var(--font-size-xs)] font-medium px-2.5 py-1 rounded-full">
+                                    {tag}
+                                    <button
+                                        onClick={() => handleRemoveTag(tag)}
+                                        className="ml-1.5 -mr-1 w-4 h-4 flex items-center justify-center rounded-full text-[var(--text-accent)] hover:bg-red-500/50 hover:text-white transition-colors"
+                                        aria-label={`Remove tag ${tag}`}
+                                    >&times;</button>
+                                </span>
+                            ))}
+                            <input type="text" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => {
+                                if (e.key === 'Enter' && newTag.trim() !== '') {
+                                    e.preventDefault();
+                                    handleAddTag(newTag.trim());
+                                    setNewTag('');
+                                }
+                            }} placeholder="Add tag..." className="bg-transparent flex-grow p-1 focus:outline-none min-w-[80px]" />
+                        </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 p-2 bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md">
-                        {template.tags.map((tag) => (
-                            <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-[length:var(--font-size-xs)] font-medium px-2.5 py-1 rounded-full">
-                                {tag}
-                                <button
-                                    onClick={() => handleRemoveTag(tag)}
-                                    className="ml-1.5 -mr-1 w-4 h-4 flex items-center justify-center rounded-full text-[var(--text-accent)] hover:bg-red-500/50 hover:text-white transition-colors"
-                                    aria-label={`Remove tag ${tag}`}
-                                >&times;</button>
-                            </span>
-                        ))}
-                        <input type="text" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => {
-                            if (e.key === 'Enter' && newTag.trim() !== '') {
-                                e.preventDefault();
-                                handleAddTag(newTag.trim());
-                                setNewTag('');
-                            }
-                        }} placeholder="Add tag..." className="bg-transparent flex-grow p-1 focus:outline-none min-w-[80px]" />
-                    </div>
-                </div>
-                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 border-b border-[var(--border-primary)] pb-2">
-                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)]">Own Attributes</h4>
-                        <HelpTooltip title="Own Attributes" content="These are the data fields defined directly on this blueprint. Entities created from this blueprint will have these fields available to store data." />
-                    </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Own Attributes">
+                    <HelpTooltip title="Own Attributes" content="These are the data fields defined directly on this blueprint. Entities created from this blueprint will have these fields available to store data." />
                     {template.attributes.map(attr => (
                         <div key={attr.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md">
                             <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <label className="text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Attribute Name</label>
-                                        <HelpTooltip title="Attribute Name" content="The name of the data field, like 'Health' or 'Description'." />
-                                    </div>
-                                    <input type="text" placeholder="Attribute Name" value={attr.name} onChange={e => updateAttribute(attr.id, { name: e.target.value })} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Attribute Name</label>
+                                    <input type="text" placeholder="Attribute Name" value={attr.name} onChange={e => updateAttribute(attr.id, { name: e.target.value })} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"/>
                                 </div>
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <label className="text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Attribute Type</label>
-                                        <HelpTooltip title="Attribute Type" content={"Determines the kind of data this attribute holds:\n- String: A single line of text.\n- Text Area: A multi-line block of text.\n- Number: A numerical value.\n- Entity Reference: A link to another entity in the game."} />
-                                    </div>
-                                    <select value={attr.type} onChange={e => updateAttribute(attr.id, { type: e.target.value as AttributeDefinition['type'], referencedTemplateId: null })} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Attribute Type</label>
+                                    <select value={attr.type} onChange={e => updateAttribute(attr.id, { type: e.target.value as AttributeDefinition['type'], referencedTemplateId: null })} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2">
                                         <option value="string">String</option>
                                         <option value="textarea">Text Area</option>
                                         <option value="number">Number</option>
@@ -313,14 +299,11 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                             </div>
                             {attr.type === 'entity_reference' && (
                                 <div className="mt-2">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <label className="text-[length:var(--font-size-xs)] font-medium text-[var(--text-secondary)]">Referenced Template</label>
-                                        <HelpTooltip title="Referenced Template" content="This constrains the reference to only allow entities created from the selected template. For example, an 'Operator' attribute could be constrained to only reference 'Character' entities." />
-                                    </div>
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Referenced Template</label>
                                     <select 
                                         value={attr.referencedTemplateId || ''} 
                                         onChange={e => updateAttribute(attr.id, { referencedTemplateId: e.target.value || null })} 
-                                        className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"
+                                        className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2"
                                     >
                                         <option value="">-- Select Template to Reference --</option>
                                         {allTemplates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -329,15 +312,12 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                             )}
                         </div>
                     ))}
-                    <button onClick={addAttribute} className="w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Attribute</button>
-                </div>
+                    <button onClick={addAttribute} className="w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300 flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4"/>Add Attribute</button>
+                </CollapsibleSection>
 
                 {!template.isComponent && (
-                    <div className="space-y-4 pt-4 border-t border-[var(--border-primary)]">
-                        <div className="flex items-center gap-2">
-                            <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)]">Included Components</h4>
-                            <HelpTooltip title="Included Components (Composition)" content="Components are reusable bundles of attributes. By including a component, you are 'plugging in' its attributes to this template.\n\nExample: You could create a 'Hacking Skill' component with a 'level' attribute. You can then include this component in any character template that needs that skill, without having to redefine the attribute each time." />
-                        </div>
+                    <CollapsibleSection title="Included Components">
+                        <HelpTooltip title="Included Components (Composition)" content="Components are reusable bundles of attributes. By including a component, you are 'plugging in' its attributes to this template.\n\nExample: You could create a 'Hacking Skill' component with a 'level' attribute. You can then include this component in any character template that needs that skill, without having to redefine the attribute each time." />
                         {(template.includedComponentIds || []).map(componentId => {
                             const component = gameData.templates.find(t => t.id === componentId);
                             return (
@@ -347,18 +327,17 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                                 </div>
                             )
                         })}
-                         <select onChange={(e) => handleIncludeComponent(e.target.value)} value="" className="w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-accent)] font-bold py-2 px-4 rounded transition duration-300 disabled:bg-[var(--bg-input)] disabled:text-[var(--text-tertiary)]" disabled={availableComponents.length === 0}>
+                         <select onChange={(e) => handleIncludeComponent(e.target.value)} value="" className="w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300 disabled:bg-[var(--bg-input)] disabled:text-[var(--text-tertiary)]" disabled={availableComponents.length === 0}>
                             <option value="">{availableComponents.length > 0 ? '-- Include a Component --' : 'No available components'}</option>
                             {availableComponents.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
-                    </div>
+                    </CollapsibleSection>
                 )}
                 
                 {attributesFromParent.length > 0 && (
-                 <div className="space-y-2 pt-4 border-t border-[var(--border-primary)]">
-                    <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-secondary)]">Inherited Attributes</h4>
+                 <CollapsibleSection title="Inherited Attributes">
                     {attributesFromParent.map(({definition, sourceName}) => (
                         <div key={definition.id} className="bg-[var(--bg-input)]/70 p-2 rounded-md text-[length:var(--font-size-sm)]">
                             <span className="text-[var(--text-primary)]">{definition.name}</span>
@@ -366,12 +345,11 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                             <span className="text-[length:var(--font-size-xs)] text-[var(--text-accent)] float-right">from {sourceName}</span>
                         </div>
                     ))}
-                 </div>
+                 </CollapsibleSection>
                 )}
 
                  {attributesFromComponents.length > 0 && (
-                     <div className="space-y-2 pt-4 border-t border-[var(--border-primary)]">
-                        <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-teal)]">Attributes from Components</h4>
+                    <CollapsibleSection title="Attributes from Components">
                         {attributesFromComponents.map(({definition, sourceName}) => (
                             <div key={`${sourceName}_${definition.id}`} className="bg-[var(--bg-input)]/70 p-2 rounded-md text-[length:var(--font-size-sm)]">
                                 <span className="text-[var(--text-primary)]">{definition.name}</span>
@@ -379,7 +357,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                                 <span className="text-[length:var(--font-size-xs)] text-[var(--text-teal)] float-right">from {sourceName}</span>
                             </div>
                         ))}
-                     </div>
+                    </CollapsibleSection>
                 )}
             </main>
             <footer className="p-4 flex justify-end space-x-3 border-t border-[var(--border-primary)] bg-[var(--bg-panel)]/50">

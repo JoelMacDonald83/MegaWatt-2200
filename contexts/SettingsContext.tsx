@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo } from '
 import { EditorSettings, EditorTheme, EditorFontSize } from '../types';
 
 const defaultSettings: EditorSettings = {
-  theme: 'dark',
-  fontSize: 'medium',
+  theme: 'high-contrast',
+  fontSize: 'large',
 };
 
 const SettingsContext = createContext<{
