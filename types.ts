@@ -186,7 +186,10 @@ export interface GameMenuSettings {
   credits: string;
 }
 
+// Represents a single game project
 export interface GameData {
+  id: string;
+  gameTitle: string;
   colonyName: string;
   startChoiceId: string | null;
   choices: PlayerChoice[];
@@ -194,6 +197,21 @@ export interface GameData {
   entities: Entity[];
   menuSettings: GameMenuSettings;
 }
+
+// Settings for the main company launcher
+export interface CompanyLauncherSettings {
+  companyName: string;
+  news: NewsItem[];
+  backgroundImagePrompt?: string;
+  backgroundImageBase64?: string;
+}
+
+// Top-level data structure for the entire application
+export interface PhoenixProject {
+  launcherSettings: CompanyLauncherSettings;
+  games: GameData[];
+}
+
 
 // --- Editor-specific types ---
 

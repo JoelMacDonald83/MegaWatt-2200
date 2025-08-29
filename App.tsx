@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
-import { MegaWattGame } from './screens/MegaWattGame';
-import type { GameData, ChoiceOutcome } from './types';
+import { MegaWattGame as LauncherFlow } from './screens/MegaWattGame';
+import type { GameData, ChoiceOutcome, PhoenixProject } from './types';
 import { debugService } from './services/debugService';
 import { HistoryService } from './services/historyService';
 import { ArrowUturnLeftIcon } from './components/icons/ArrowUturnLeftIcon';
@@ -42,6 +42,8 @@ const ENTITY_JAX_ID = 'char_1';
 
 
 const initialGameData: GameData = {
+  id: 'game_mw2200',
+  gameTitle: 'MegaWatt 2200',
   colonyName: 'Aethelburg Node',
   startChoiceId: CHOICE_INTRO_1,
   menuSettings: {
@@ -299,24 +301,44 @@ const initialGameData: GameData = {
   ],
 };
 
+const initialProject: PhoenixProject = {
+  launcherSettings: {
+    companyName: "Aetherion Interactive",
+    news: [
+       {
+        id: 'news_company_1',
+        date: '2201-01-01',
+        title: 'Welcome to the Aetherion Launcher!',
+        author: 'The Aetherion Team',
+        content: 'This is the central hub for all our upcoming titles. Stay tuned for more announcements!',
+        status: 'published',
+        style: 'lore',
+        layout: 'image_top',
+      }
+    ],
+    backgroundImagePrompt: 'A sleek, futuristic, dark sci-fi computer interface with glowing abstract geometric patterns. Minimalist and clean.',
+  },
+  games: [initialGameData]
+};
+
 
 const AppContent: React.FC = () => {
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   
-  const historyService = useMemo(() => new HistoryService<GameData>(initialGameData), []);
+  const historyService = useMemo(() => new HistoryService<PhoenixProject>(initialProject), []);
   
-  const [gameData, setGameData] = useState<GameData>(() => historyService.current()!);
+  const [projectData, setProjectData] = useState<PhoenixProject>(() => historyService.current()!);
   const [canUndo, setCanUndo] = useState(historyService.canUndo());
   const [canRedo, setCanRedo] = useState(historyService.canRedo());
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   useEffect(() => {
-    debugService.log("App: Component mounted", { initialGameData });
+    debugService.log("App: Component mounted", { initialProject });
     
     const unsubscribe = historyService.subscribe(() => {
         const currentData = historyService.current();
         if (currentData) {
-            setGameData(currentData);
+            setProjectData(currentData);
         }
         setCanUndo(historyService.canUndo());
         setCanRedo(historyService.canRedo());
@@ -351,21 +373,29 @@ const AppContent: React.FC = () => {
       };
   }, [handleUndo, handleRedo]);
 
-  const commitChange = useCallback((newGameData: GameData) => {
-      historyService.push(newGameData);
+  const commitChange = useCallback((newProjectData: PhoenixProject) => {
+      historyService.push(newProjectData);
   }, [historyService]);
 
   useEffect(() => {
     debugService.log("App: View mode changed", { viewMode });
   }, [viewMode]);
 
-  const handleChoiceOutcomes = (outcomes: ChoiceOutcome[]) => {
-    debugService.log("App: handleChoiceOutcomes triggered from game preview", { outcomes });
+  const handleChoiceOutcomes = (gameId: string, outcomes: ChoiceOutcome[]) => {
+    debugService.log("App: handleChoiceOutcomes triggered from game preview", { gameId, outcomes });
     
-    let currentData = historyService.current();
-    if (!currentData) return;
+    let currentProject = historyService.current();
+    if (!currentProject) return;
+
+    const gameIndex = currentProject.games.findIndex(g => g.id === gameId);
+    if (gameIndex === -1) {
+      debugService.log("App: handleChoiceOutcomes error: game not found", { gameId });
+      return;
+    }
     
-    debugService.log("App: gameData state before outcome", { gameData: currentData });
+    let gameToUpdate = { ...currentProject.games[gameIndex] };
+
+    debugService.log("App: gameData state before outcome", { gameData: gameToUpdate });
 
     for (const outcome of outcomes) {
         let nextData: GameData;
@@ -377,13 +407,13 @@ const AppContent: React.FC = () => {
                 attributeValues: outcome.attributeValues || {},
             };
             nextData = {
-                ...currentData,
-                entities: [...currentData.entities, newEntity]
+                ...gameToUpdate,
+                entities: [...gameToUpdate.entities, newEntity]
             };
         } else if (outcome.type === 'update_entity') {
             nextData = {
-                ...currentData,
-                entities: currentData.entities.map(entity => {
+                ...gameToUpdate,
+                entities: gameToUpdate.entities.map(entity => {
                 if (entity.id === outcome.targetEntityId) {
                     return {
                     ...entity,
@@ -397,41 +427,46 @@ const AppContent: React.FC = () => {
                 })
             };
         } else {
-            nextData = currentData;
+            nextData = gameToUpdate;
         }
-        currentData = nextData;
+        gameToUpdate = nextData;
     }
 
-    debugService.log("App: gameData state after all outcomes", { gameData: currentData });
-    commitChange(currentData);
+    const newGames = [...currentProject.games];
+    newGames[gameIndex] = gameToUpdate;
+    const newProject = { ...currentProject, games: newGames };
+
+
+    debugService.log("App: gameData state after all outcomes", { gameData: gameToUpdate });
+    commitChange(newProject);
   };
 
-  const handleSaveGame = () => {
-    debugService.log('App: Saving game', { gameData });
+  const handleSaveProject = () => {
+    debugService.log('App: Saving project', { projectData });
     const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(gameData, null, 2))}`;
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(projectData, null, 2))}`;
     const link = document.createElement('a');
     link.href = jsonString;
-    link.download = `${gameData.colonyName.replace(/\s+/g, '_') || 'megawatt_save'}_${timestamp}.json`;
+    link.download = `phoenix_project_${timestamp}.json`;
     link.click();
   };
 
-  const handleLoadGame = (jsonString: string) => {
+  const handleLoadProject = (jsonString: string) => {
     try {
-      debugService.log('App: Attempting to load game from string', { length: jsonString.length });
+      debugService.log('App: Attempting to load project from string', { length: jsonString.length });
       const loadedData = JSON.parse(jsonString);
-      // Basic validation to see if it looks like a game data file
-      if (loadedData.colonyName && loadedData.entities && loadedData.templates && loadedData.choices) {
+      // Basic validation to see if it looks like a project data file
+      if (loadedData.launcherSettings && loadedData.games) {
         historyService.clearAndPush(loadedData);
-        debugService.log('App: Game loaded successfully', { loadedData });
-        alert('Game loaded successfully!');
+        debugService.log('App: Project loaded successfully', { loadedData });
+        alert('Project loaded successfully!');
       } else {
-        throw new Error('Invalid or corrupted save file format.');
+        throw new Error('Invalid or corrupted project file format.');
       }
     } catch (error) {
-      console.error("Failed to load game:", error);
-      debugService.log('App: Game load failed', { error });
-      alert(`Failed to load game: ${(error as Error).message}`);
+      console.error("Failed to load project:", error);
+      debugService.log('App: Project load failed', { error });
+      alert(`Failed to load project: ${(error as Error).message}`);
     }
   };
 
@@ -441,7 +476,7 @@ const AppContent: React.FC = () => {
       <header className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 bg-[var(--bg-panel)]/70 backdrop-blur-sm border-b border-[var(--border-primary)]">
         <div className="flex items-center gap-4">
             <h1 className="text-[length:var(--font-size-lg)] font-bold text-[var(--text-primary)]">
-              <span className="text-[var(--text-accent-bright)]">MegaWatt 2200</span> / Phoenix Editor
+              <span className="text-[var(--text-accent-bright)]">Phoenix</span> / Editor
             </h1>
             <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
                 <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Undo (Ctrl+Z)">
@@ -464,7 +499,7 @@ const AppContent: React.FC = () => {
                 onClick={() => setViewMode('preview')}
                 className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
               >
-                Preview
+                Launcher
               </button>
             </div>
              <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md transition-colors bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)]" title="Editor Settings">
@@ -475,21 +510,16 @@ const AppContent: React.FC = () => {
       <main className="h-full pt-[57px]">
         {viewMode === 'editor' ? (
           <PhoenixEditor 
-            gameData={gameData} 
+            projectData={projectData} 
             onCommitChange={commitChange} 
-            onLoadGame={handleLoadGame} 
+            onLoadProject={handleLoadProject} 
+            onSaveProject={handleSaveProject}
           />
         ) : (
           <div className="h-full overflow-y-auto">
-            <MegaWattGame 
-              gameData={gameData} 
+            <LauncherFlow 
+              projectData={projectData} 
               onChoiceMade={handleChoiceOutcomes}
-              onSaveGame={handleSaveGame}
-              onLoadGame={handleLoadGame}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              canUndo={canUndo}
-              canRedo={canRedo}
             />
           </div>
         )}
