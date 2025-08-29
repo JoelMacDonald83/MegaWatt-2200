@@ -854,8 +854,18 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
                                 {gameData.menuSettings.news.map(item => (
                                     <div key={item.id} className="bg-[var(--bg-input)] p-3 rounded-md border border-[var(--border-secondary)] flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
-                                            <p className="text-[length:var(--font-size-xs)] text-[var(--text-secondary)]">{item.date}</p>
+                                            <p className="font-semibold text-[var(--text-primary)]">
+                                                {item.title}
+                                                {item.status === 'draft' && <span className="ml-2 text-[length:var(--font-size-xs)] font-medium bg-yellow-800/50 text-yellow-300 px-2 py-0.5 rounded-full align-middle">Draft</span>}
+                                            </p>
+                                            <p className="text-[length:var(--font-size-xs)] text-[var(--text-secondary)]">{item.date} {item.author && `• ${item.author}`}</p>
+                                            {item.tags && item.tags.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {item.tags.map(tag => (
+                                                        <span key={tag} className="text-[10px] bg-[var(--bg-panel-light)]/50 text-[var(--text-secondary)] px-1.5 py-0.5 rounded-full">{tag}</span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-2 flex-shrink-0">
                                             <button onClick={() => setEditingNewsItem(item)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><PencilIcon className="w-4 h-4" /></button>
@@ -930,6 +940,8 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
               item={'isNew' in editingNewsItem ? null : editingNewsItem}
               onClose={() => setEditingNewsItem(null)}
               onSave={handleSaveNewsItem}
+              onGenerateImage={handleGenerateImage}
+              isGenerating={isGenerating === 'image'}
           />
       )}
 
@@ -980,18 +992,130 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
   );
 };
 
+const MarkdownToolbar: React.FC<{
+    textareaRef: React.RefObject<HTMLTextAreaElement>;
+    onContentChange: (newContent: string) => void;
+}> = ({ textareaRef, onContentChange }) => {
+    const applyMarkdown = (syntax: 'bold' | 'italic' | 'list') => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = textarea.value.substring(start, end);
+        let newText;
+
+        switch (syntax) {
+            case 'bold':
+                newText = `**${selectedText}**`;
+                break;
+            case 'italic':
+                newText = `*${selectedText}*`;
+                break;
+            case 'list':
+                const lines = selectedText.split('\n');
+                newText = lines.map(line => `* ${line}`).join('\n');
+                break;
+        }
+
+        const updatedValue = textarea.value.substring(0, start) + newText + textarea.value.substring(end);
+        onContentChange(updatedValue);
+
+        // Focus and adjust selection for better UX
+        setTimeout(() => {
+            textarea.focus();
+            if (selectedText) {
+                textarea.selectionStart = start;
+                textarea.selectionEnd = start + newText.length;
+            } else {
+                 textarea.selectionStart = start + (syntax === 'list' ? 2 : (syntax === 'bold' ? 2 : 1));
+                 textarea.selectionEnd = start + (syntax === 'list' ? 2 : (syntax === 'bold' ? 2 : 1));
+            }
+        }, 0);
+    };
+
+    return (
+        <div className="flex items-center gap-1 p-1 bg-[var(--bg-input)] border border-b-0 border-[var(--border-secondary)] rounded-t-md">
+            <button type="button" onClick={() => applyMarkdown('bold')} className="p-2 rounded hover:bg-[var(--bg-hover)]" title="Bold (Ctrl+B)">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><path d="M8.21 13c2.106 0 3.412-1.087 3.412-2.823 0-1.306-.984-2.283-2.324-2.386v-.055a2.176 2.176 0 0 0 1.852-2.14c0-1.51-1.162-2.46-2.98-2.46H5.02v11.986h3.19zm-1.14-2.285V4.99h1.16c.93 0 1.514.464 1.514 1.252 0 .822-.605 1.32-1.556 1.32H7.07zm.005 3.525V9.053h1.332c1.16 0 1.838.54 1.838 1.484 0 .957-.71 1.68-1.923 1.68H7.075z"/></svg>
+            </button>
+            <button type="button" onClick={() => applyMarkdown('italic')} className="p-2 rounded hover:bg-[var(--bg-hover)]" title="Italic (Ctrl+I)">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><path d="M7.991 11.666 9.645 4.359h-1.62L6.375 11.666h1.616zm-2.443.05L4.01 4.359H2.618l1.556 7.364h1.54zM12.3 4.359h-1.355l-1.556 7.364h1.54l1.537-7.364z"/></svg>
+            </button>
+            <button type="button" onClick={() => applyMarkdown('list')} className="p-2 rounded hover:bg-[var(--bg-hover)]" title="Bulleted List">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><path fillRule="evenodd" d="M5 11.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zm-3 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm0 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>
+            </button>
+        </div>
+    );
+};
+
 const NewsEditorModal: React.FC<{
     item: NewsItem | null;
     onClose: () => void;
     onSave: (item: NewsItem) => void;
-}> = ({ item, onClose, onSave }) => {
+    onGenerateImage: (prompt: string, onUpdate: (base64: string) => void) => void;
+    isGenerating: boolean;
+}> = ({ item, onClose, onSave, onGenerateImage, isGenerating }) => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
+    const [author, setAuthor] = useState('');
+    const [imagePrompt, setImagePrompt] = useState('');
+    const [imageBase64, setImageBase64] = useState<string | ArrayBuffer | null>('');
+    const [tags, setTags] = useState<string[]>([]);
+    const [newTag, setNewTag] = useState('');
+    const [style, setStyle] = useState<NewsItem['style']>('normal');
+    const [status, setStatus] = useState<NewsItem['status']>('draft');
+    const [layout, setLayout] = useState<NewsItem['layout']>('image_top');
+    const [ctaEnabled, setCtaEnabled] = useState(false);
+    const [ctaText, setCtaText] = useState('');
+    const [ctaUrl, setCtaUrl] = useState('');
+
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         setTitle(item?.title || '');
         setContent(item?.content || '');
+        setAuthor(item?.author || '');
+        setImagePrompt(item?.imagePrompt || '');
+        setImageBase64(item?.imageBase64 || '');
+        setTags(item?.tags || []);
+        setStyle(item?.style || 'normal');
+        setStatus(item?.status || 'draft');
+        setLayout(item?.layout || 'image_top');
+        setCtaEnabled(!!item?.cta);
+        setCtaText(item?.cta?.text || '');
+        setCtaUrl(item?.cta?.url || '');
     }, [item]);
+
+    const handleAddTag = () => {
+        if (newTag.trim() && !tags.includes(newTag.trim())) {
+            setTags([...tags, newTag.trim()]);
+            setNewTag('');
+        }
+    };
+
+    const handleRemoveTag = (tagToRemove: string) => {
+        setTags(tags.filter(t => t !== tagToRemove));
+    };
+    
+    const handleGenerateClick = () => {
+        if (imagePrompt) {
+            onGenerateImage(imagePrompt, (base64) => {
+                setImageBase64(`data:image/jpeg;base64,${base64}`);
+            });
+        }
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => setImageBase64(ev.target?.result || null);
+            reader.readAsDataURL(file);
+        }
+        if (e.target) e.target.value = '';
+    };
 
     const handleSave = () => {
         if (!title.trim()) {
@@ -1003,19 +1127,103 @@ const NewsEditorModal: React.FC<{
             date: item?.date || new Date().toLocaleDateString('en-CA'),
             title,
             content,
+            author,
+            imagePrompt,
+            imageBase64: imageBase64 as string,
+            tags,
+            style,
+            status,
+            layout,
+            cta: ctaEnabled && ctaText && ctaUrl ? { text: ctaText, url: ctaUrl } : undefined
         });
     };
 
     return (
         <Modal isOpen={true} onClose={onClose} title={item ? 'Edit News Item' : 'Add News Item'}>
-            <div className="space-y-4">
-                <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                 <div className="md:col-span-2">
                     <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Title</label>
                     <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
                 </div>
+
                 <div>
-                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Content</label>
-                    <textarea value={content} onChange={e => setContent(e.target.value)} rows={10} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]"/>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Author</label>
+                    <input type="text" value={author} onChange={e => setAuthor(e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="e.g. Engineering Dept."/>
+                </div>
+                 <div>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Publication Status</label>
+                    <select value={status} onChange={e => setStatus(e.target.value as NewsItem['status'])}  className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]">
+                        <option value="draft">Draft</option>
+                        <option value="published">Published</option>
+                    </select>
+                </div>
+                 <div>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Visual Style</label>
+                    <select value={style} onChange={e => setStyle(e.target.value as NewsItem['style'])}  className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]">
+                        <option value="normal">Normal</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="lore">Lore</option>
+                    </select>
+                 </div>
+                 <div>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Image Layout</label>
+                    <select value={layout} onChange={e => setLayout(e.target.value as NewsItem['layout'])}  className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]">
+                        <option value="image_top">Image Top</option>
+                        <option value="image_left">Image Left</option>
+                        <option value="image_right">Image Right</option>
+                    </select>
+                </div>
+
+                <div className="md:col-span-2">
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Content (Markdown supported)</label>
+                    <MarkdownToolbar textareaRef={contentTextareaRef} onContentChange={setContent} />
+                    <textarea ref={contentTextareaRef} value={content} onChange={e => setContent(e.target.value)} rows={10} className="w-full bg-[var(--bg-input)] border border-t-0 border-[var(--border-secondary)] rounded-b-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)] focus:z-10 relative"/>
+                </div>
+
+                 <div className="md:col-span-2">
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Tags</label>
+                    <div className="flex flex-wrap items-center gap-2 p-2 bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md">
+                        {tags.map((tag) => (
+                            <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-[length:var(--font-size-xs)] font-medium px-2.5 py-1 rounded-full">
+                                {tag}
+                                <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 -mr-1 w-4 h-4 flex items-center justify-center rounded-full text-[var(--text-accent)] hover:bg-red-500/50 hover:text-white transition-colors" aria-label={`Remove tag ${tag}`}>&times;</button>
+                            </span>
+                        ))}
+                        <input type="text" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }} placeholder="Add tag..." className="bg-transparent flex-grow p-1 focus:outline-none min-w-[80px]" />
+                    </div>
+                </div>
+
+                <div className="md:col-span-2 space-y-2">
+                     <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Call to Action Button</label>
+                     <div className="flex items-center gap-2">
+                        <input type="checkbox" id="cta-enabled" checked={ctaEnabled} onChange={e => setCtaEnabled(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500" />
+                        <label htmlFor="cta-enabled" className="text-[var(--text-primary)]">Enable Button</label>
+                     </div>
+                     {ctaEnabled && (
+                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-[var(--bg-input)]/50 rounded-md">
+                            <div>
+                                <label className="block text-[length:var(--font-size-xs)] text-[var(--text-secondary)] mb-1">Button Text</label>
+                                <input type="text" value={ctaText} onChange={e => setCtaText(e.target.value)} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., Read More"/>
+                            </div>
+                            <div>
+                                <label className="block text-[length:var(--font-size-xs)] text-[var(--text-secondary)] mb-1">Button URL</label>
+                                <input type="url" value={ctaUrl} onChange={e => setCtaUrl(e.target.value)} className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="https://..."/>
+                            </div>
+                         </div>
+                     )}
+                </div>
+
+                <div className="md:col-span-2">
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Header Image</label>
+                    <textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 focus:ring-[var(--border-accent)] focus:border-[var(--border-accent)]" placeholder="AI Prompt..."/>
+                    <div className="flex space-x-2 mt-2">
+                        <button onClick={handleGenerateClick} disabled={isGenerating || !imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md transition duration-300">
+                            {isGenerating ? 'Generating...' : 'Generate with AI'}
+                        </button>
+                        <button onClick={() => imageInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md transition duration-300">Upload Image</button>
+                        <input type="file" accept="image/*" ref={imageInputRef} onChange={handleFileUpload} className="hidden"/>
+                        {imageBase64 && <button onClick={() => setImageBase64('')} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear</button>}
+                    </div>
                 </div>
             </div>
              <div className="mt-6 flex justify-end space-x-3">

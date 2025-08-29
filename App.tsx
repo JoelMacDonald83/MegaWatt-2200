@@ -49,7 +49,21 @@ const initialGameData: GameData = {
     tags: ['Sci-Fi', 'Narrative Driven', 'Colony Sim'],
     backgroundImagePrompt: 'A lone figure stands on a high balcony overlooking a futuristic, cyberpunk colony dome at night. The mood is contemplative and serious.',
     backgroundImageBase64: '',
-    news: [],
+    news: [
+      {
+        id: 'news_1',
+        date: '2200-10-26',
+        title: 'Power Fluctuations Detected in Sector Gamma',
+        author: 'Engineering Department',
+        content: '**Attention all personnel:**\n\nWe are tracking intermittent power surges originating from the geothermal plant. Non-essential systems may be temporarily rerouted.\n\nAn investigation is underway. Please conserve energy until further notice.',
+        imagePrompt: 'A futuristic power grid schematic with a glowing red warning symbol over a specific sector. Dark, high-tech interface.',
+        imageBase64: '',
+        tags: ['System Alert', 'Engineering'],
+        style: 'urgent',
+        status: 'published',
+        layout: 'image_top',
+      }
+    ],
     credits: 'Created with the Phoenix Editor for MegaWatt 2200.',
   },
   choices: [

@@ -327,6 +327,46 @@ const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onCom
     );
 };
 
+const parseMarkdown = (text: string): string => {
+  if (!text) return '';
+
+  let processedText = text
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[var(--text-accent)] hover:underline">$1</a>');
+  
+  const lines = processedText.split('\n');
+  let html = '';
+  let inList = false;
+
+  lines.forEach(line => {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      if (!inList) {
+        html += '<ul>';
+        inList = true;
+      }
+      html += `<li>${trimmedLine.substring(2)}</li>`;
+    } else {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      if (trimmedLine) {
+        html += `<p>${line}</p>`;
+      }
+    }
+  });
+
+  if (inList) {
+    html += '</ul>';
+  }
+
+  return html;
+};
 
 export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMade, onSaveGame, onLoadGame, onUndo, onRedo, canUndo, canRedo }) => {
     const { choices, startChoiceId } = gameData;
@@ -498,13 +538,96 @@ export const MegaWattGame: React.FC<MegaWattGameProps> = ({ gameData, onChoiceMa
                         <div>
                             <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">News & Updates</h2>
                             <div className="space-y-6 max-w-3xl">
-                                {menuSettings.news.length > 0 ? [...menuSettings.news].reverse().map(item => (
-                                    <div key={item.id} className="bg-[var(--bg-panel)]/50 p-6 rounded-lg">
-                                        <p className="text-[var(--text-secondary)] text-sm mb-1">{item.date}</p>
-                                        <h3 className="text-2xl font-semibold text-[var(--text-accent)] mb-2">{item.title}</h3>
-                                        <p className="text-gray-300 whitespace-pre-wrap">{item.content}</p>
-                                    </div>
-                                )) : <p className="text-[var(--text-secondary)]">No news items have been posted.</p>}
+                                {[...menuSettings.news].filter(n => n.status === 'published').reverse().map(item => {
+                                    const styleClasses = {
+                                        normal: { container: 'border-transparent', title: 'text-[var(--text-accent)]' },
+                                        urgent: { container: 'border-red-500/50', title: 'text-red-400' },
+                                        lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-yellow-400' }
+                                    }[item.style || 'normal'];
+                                    
+                                    const layoutClasses = {
+                                        container: `flex flex-col ${item.layout !== 'image_top' ? 'md:flex-row' : ''} ${item.layout === 'image_right' ? 'md:flex-row-reverse' : ''} gap-6`,
+                                        image: `flex-shrink-0 ${item.layout !== 'image_top' ? 'md:w-1/3' : 'w-full h-40'} object-cover`,
+                                    };
+
+                                    return (
+                                        <div key={item.id} className={`bg-[var(--bg-panel)]/50 rounded-lg overflow-hidden border ${styleClasses.container} transition-colors p-6`}>
+                                            <div className={layoutClasses.container}>
+                                                {item.imageBase64 && (
+                                                    <img src={item.imageBase64} alt={item.title} className={layoutClasses.image} />
+                                                )}
+                                                <div className="flex-grow">
+                                                    <div className="flex justify-between items-start mb-1 text-[var(--text-secondary)] text-sm">
+                                                        <p>{item.date}</p>
+                                                        {item.author && <p className="italic">from {item.author}</p>}
+                                                    </div>
+                                                    <h3 className={`text-2xl font-semibold mb-2 ${styleClasses.title}`}>{item.title}</h3>
+                                                    {item.tags && item.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-2 mb-4">
+                                                            {item.tags.map(tag => (
+                                                                <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-secondary)] text-xs font-medium px-2.5 py-1 rounded-full">{tag}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div className="text-gray-300 prose prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
+                                                    {item.cta && item.cta.text && item.cta.url && (
+                                                        <div className="mt-4">
+                                                            <a href={item.cta.url} target="_blank" rel="noopener noreferrer" className="inline-block bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-6 rounded-full transition-transform transform hover:scale-105 text-sm">
+                                                                {item.cta.text}
+                                                            </a>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }).length > 0 ? [...menuSettings.news].filter(n => n.status === 'published').reverse().map(item => {
+                                    const styleClasses = {
+                                        normal: { container: 'border-transparent', title: 'text-[var(--text-accent)]' },
+                                        urgent: { container: 'border-red-500/50', title: 'text-red-400' },
+                                        lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-yellow-400' }
+                                    }[item.style || 'normal'];
+                                    
+                                    const layoutClasses = {
+                                        container: `flex flex-col ${item.layout !== 'image_top' ? 'md:flex-row' : ''} ${item.layout === 'image_right' ? 'md:flex-row-reverse' : ''} gap-6`,
+                                        image: `flex-shrink-0 rounded-md ${item.layout !== 'image_top' ? 'md:w-1/3' : 'w-full h-48'} object-cover`,
+                                    };
+
+                                    return (
+                                        <div key={item.id} className={`bg-[var(--bg-panel)]/50 rounded-lg overflow-hidden border ${styleClasses.container} transition-colors`}>
+                                            <div className="p-6">
+                                                <div className={layoutClasses.container}>
+                                                    {item.imageBase64 && (
+                                                        <img src={item.imageBase64} alt={item.title} className={layoutClasses.image} />
+                                                    )}
+                                                    <div className="flex-grow">
+                                                        <div className="flex justify-between items-start mb-1 text-[var(--text-secondary)] text-sm">
+                                                            <p>{item.date}</p>
+                                                            {item.author && <p className="italic">from {item.author}</p>}
+                                                        </div>
+                                                        <h3 className={`text-2xl font-semibold mb-2 ${styleClasses.title}`}>{item.title}</h3>
+                                                        {item.tags && item.tags.length > 0 && (
+                                                            <div className="flex flex-wrap gap-2 mb-4">
+                                                                {item.tags.map(tag => (
+                                                                    <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-secondary)] text-xs font-medium px-2.5 py-1 rounded-full">{tag}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        <div className="text-gray-300 prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
+                                                        
+                                                        {item.cta && item.cta.text && item.cta.url && (
+                                                            <div className="mt-4">
+                                                                <a href={item.cta.url} target="_blank" rel="noopener noreferrer" className="inline-block bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-6 rounded-full transition-transform transform hover:scale-105 text-sm">
+                                                                    {item.cta.text}
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }) : <p className="text-[var(--text-secondary)]">No news items have been posted.</p>}
                             </div>
                         </div>
                     )}
@@ -621,6 +744,11 @@ style.innerHTML = `
   background-image: linear-gradient(var(--grid-bg-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-bg-color) 1px, transparent 1px);
   background-size: 2rem 2rem;
 }
+.prose-invert a { color: var(--text-accent); }
+.prose-invert a:hover { color: var(--text-accent-bright); }
+.prose-invert strong { color: var(--text-primary); }
+.prose-invert em { color: var(--text-primary); }
+.prose-invert ul > li::before { background-color: var(--text-secondary); }
 
 /* Background Animations */
 @keyframes kenburns-normal { 0% { transform: scale(1.0) translate(0, 0); } 100% { transform: scale(1.1) translate(-1%, 2%); } }

@@ -163,7 +163,18 @@ export interface NewsItem {
   id: string;
   date: string;
   title: string;
-  content: string;
+  author?: string;
+  content: string; // Markdown content
+  imagePrompt?: string;
+  imageBase64?: string;
+  tags?: string[];
+  style?: 'normal' | 'urgent' | 'lore';
+  status: 'draft' | 'published';
+  layout: 'image_top' | 'image_left' | 'image_right';
+  cta?: {
+    text: string;
+    url: string;
+  };
 }
 
 export interface GameMenuSettings {
