@@ -1049,6 +1049,47 @@ const MarkdownToolbar: React.FC<{
     );
 };
 
+const parseMarkdown = (text: string): string => {
+  if (!text) return '';
+
+  let processedText = text
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[var(--text-accent)] hover:underline">$1</a>');
+  
+  const lines = processedText.split('\n');
+  let html = '';
+  let inList = false;
+
+  lines.forEach(line => {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      if (!inList) {
+        html += '<ul>';
+        inList = true;
+      }
+      html += `<li>${trimmedLine.substring(2)}</li>`;
+    } else {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      if (trimmedLine) {
+        html += `<p>${line}</p>`;
+      }
+    }
+  });
+
+  if (inList) {
+    html += '</ul>';
+  }
+
+  return html;
+};
+
 const NewsEditorModal: React.FC<{
     item: NewsItem | null;
     onClose: () => void;
@@ -1136,6 +1177,69 @@ const NewsEditorModal: React.FC<{
             layout,
             cta: ctaEnabled && ctaText && ctaUrl ? { text: ctaText, url: ctaUrl } : undefined
         });
+    };
+    
+    const previewItem: NewsItem = {
+        id: item?.id || 'preview_id',
+        date: item?.date || new Date().toLocaleDateString('en-CA'),
+        title,
+        content,
+        author,
+        imagePrompt,
+        imageBase64: imageBase64 as string,
+        tags,
+        style,
+        status,
+        layout,
+        cta: ctaEnabled && ctaText && ctaUrl ? { text: ctaText, url: ctaUrl } : undefined
+    };
+
+    const renderPreview = () => {
+        const styleClasses = {
+            normal: { container: 'border-transparent', title: 'text-[var(--text-accent)]' },
+            urgent: { container: 'border-red-500/50', title: 'text-red-400' },
+            lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-yellow-400' }
+        }[previewItem.style || 'normal'];
+        
+        const layoutClasses = {
+            container: `flex flex-col ${previewItem.layout !== 'image_top' ? 'md:flex-row' : ''} ${previewItem.layout === 'image_right' ? 'md:flex-row-reverse' : ''} gap-6`,
+            image: `flex-shrink-0 rounded-md ${previewItem.layout !== 'image_top' ? 'md:w-1/3' : 'w-full h-48'} object-cover`,
+        };
+
+        return (
+            <div className={`bg-[var(--bg-panel)]/50 rounded-lg overflow-hidden border ${styleClasses.container} transition-colors`}>
+                <div className="p-6">
+                    <div className={layoutClasses.container}>
+                        {previewItem.imageBase64 && (
+                            <img src={previewItem.imageBase64} alt={previewItem.title} className={layoutClasses.image} />
+                        )}
+                        <div className="flex-grow">
+                            <div className="flex justify-between items-start mb-1 text-[var(--text-secondary)] text-sm">
+                                <p>{previewItem.date}</p>
+                                {previewItem.author && <p className="italic">from {previewItem.author}</p>}
+                            </div>
+                            <h3 className={`text-2xl font-semibold mb-2 ${styleClasses.title}`}>{previewItem.title || 'Untitled'}</h3>
+                            {previewItem.tags && previewItem.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-4">
+                                    {previewItem.tags.map(tag => (
+                                        <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-secondary)] text-xs font-medium px-2.5 py-1 rounded-full">{tag}</span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="text-gray-300 prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(previewItem.content) }} />
+                            
+                            {previewItem.cta && previewItem.cta.text && previewItem.cta.url && (
+                                <div className="mt-4">
+                                    <a href={previewItem.cta.url} target="_blank" rel="noopener noreferrer" className="inline-block bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-6 rounded-full transition-transform transform hover:scale-105 text-sm">
+                                        {previewItem.cta.text}
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -1226,6 +1330,14 @@ const NewsEditorModal: React.FC<{
                     </div>
                 </div>
             </div>
+
+            <div className="mt-6 pt-6 border-t border-[var(--border-primary)]">
+                <label className="block text-[length:var(--font-size-lg)] font-medium text-[var(--text-secondary)] mb-4">Live Preview</label>
+                <div className="bg-[var(--bg-main)] bg-grid p-4 rounded-md min-h-[300px]">
+                   {renderPreview()}
+                </div>
+            </div>
+
              <div className="mt-6 flex justify-end space-x-3">
                 <button onClick={onClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
                 <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save</button>
