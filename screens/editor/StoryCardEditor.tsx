@@ -156,7 +156,7 @@ export const StoryCardEditor: React.FC<StoryCardEditorProps> = ({ initialCard, o
 
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-800">
+        <div className="flex-1 flex flex-col bg-gray-800 min-h-0">
             <header className="p-4 border-b border-gray-700">
                 <h2 className="text-xl font-bold text-cyan-300">{isNew ? (isChoiceCard ? 'Creating New Choice Card' : 'Creating New Story Card') : `Editing Card`}</h2>
             </header>

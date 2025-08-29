@@ -273,7 +273,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
     const availableStuffSets = stuff.filter(s => !(resolvedProperties.includedStuff || []).some(is => is.stuff.setId === s.id));
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-800">
+        <div className="flex-1 flex flex-col bg-gray-800 min-h-0">
             <header className="p-4 border-b border-gray-700">
                 <h2 className="text-xl font-bold text-cyan-300">{isNew ? 'Creating New Template' : `Editing: ${template.name}`}</h2>
             </header>
@@ -318,20 +318,28 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                  <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-gray-300 border-b border-gray-600 pb-2">Own Attributes</h4>
                     {template.attributes.map(attr => (
-                        <div key={attr.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-center bg-gray-900/50 p-3 rounded-md">
-                            <input type="text" placeholder="Attribute Name" value={attr.name} onChange={e => updateAttribute(attr.id, { name: e.target.value })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
-                            <select value={attr.type} onChange={e => updateAttribute(attr.id, { type: e.target.value as AttributeDefinition['type'], referencedTemplateId: null })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500">
-                                <option value="string">String</option>
-                                <option value="textarea">Text Area</option>
-                                <option value="number">Number</option>
-                                <option value="entity_reference">Entity Reference</option>
-                            </select>
-                            <button onClick={() => removeAttribute(attr.id)} className="text-red-400 hover:text-red-300 justify-self-end p-1">Remove</button>
-                            {attr.type === 'entity_reference' && (
-                                <select value={attr.referencedTemplateId || ''} onChange={e => updateAttribute(attr.id, { referencedTemplateId: e.target.value })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 md:col-span-2">
-                                    <option value="">-- Select Template --</option>
-                                    {allTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        <div key={attr.id} className="bg-gray-900/50 p-3 rounded-md">
+                            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-center">
+                                <input type="text" placeholder="Attribute Name" value={attr.name} onChange={e => updateAttribute(attr.id, { name: e.target.value })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                                <select value={attr.type} onChange={e => updateAttribute(attr.id, { type: e.target.value as AttributeDefinition['type'], referencedTemplateId: null })} className="bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500">
+                                    <option value="string">String</option>
+                                    <option value="textarea">Text Area</option>
+                                    <option value="number">Number</option>
+                                    <option value="entity_reference">Entity Reference</option>
                                 </select>
+                                <button onClick={() => removeAttribute(attr.id)} className="text-red-400 hover:text-red-300 justify-self-end p-1">Remove</button>
+                            </div>
+                            {attr.type === 'entity_reference' && (
+                                <div className="mt-2">
+                                    <select 
+                                        value={attr.referencedTemplateId || ''} 
+                                        onChange={e => updateAttribute(attr.id, { referencedTemplateId: e.target.value || null })} 
+                                        className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500"
+                                    >
+                                        <option value="">-- Select Template to Reference --</option>
+                                        {allTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
                             )}
                         </div>
                     ))}

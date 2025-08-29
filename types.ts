@@ -72,6 +72,16 @@ export interface Entity {
     // The value can be a string, a number, or an entity ID for references
     [attributeId: string]: string | number | null;
   };
+  imagePrompt?: string;
+  imageBase64?: string;
+  styles?: {
+    borderColor?: string; // e.g., 'cyan-500'
+    borderWidth?: 'none' | 'sm' | 'md' | 'lg';
+    shadow?: 'none' | 'sm' | 'md' | 'lg' | 'xl';
+    titleColor?: string; // e.g., 'text-cyan-300'
+    backgroundColor?: string; // e.g., 'bg-gray-800/50'
+    backgroundOverlayStrength?: 'none' | 'light' | 'medium' | 'heavy';
+  }
 }
 
 export interface ChoiceOutcomeCreateEntity {

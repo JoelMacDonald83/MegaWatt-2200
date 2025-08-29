@@ -100,39 +100,60 @@ const AttributeDisplay: React.FC<{
     );
 };
 
-const EntityCard: React.FC<{ 
-    entity: Entity; 
+const EntityCard: React.FC<{
+    entity: Entity;
     gameData: GameData;
     entityMap: Map<string, Entity>;
 }> = ({ entity, gameData, entityMap }) => {
-    
+
     const resolvedAttributes = useMemo(() => resolveEntityAttributes(entity, gameData), [entity, gameData]);
 
-    return (
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 shadow-lg transform hover:-translate-y-1 transition-transform duration-300 flex flex-col">
-            <h3 className="text-xl font-bold text-cyan-300 mb-4">{entity.name}</h3>
-            <div className="space-y-3 text-sm flex-grow">
-                {resolvedAttributes.templateAttributes.map(resAttr => (
-                    <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
-                ))}
+    const styles = useMemo(() => {
+        const s = entity.styles || {};
+        const hasBgImage = !!entity.imageBase64;
+        return {
+            borderColor: s.borderColor ? `border-${s.borderColor}` : 'border-gray-700',
+            borderWidth: { none: 'border-0', sm: 'border', md: 'border-2', lg: 'border-4' }[s.borderWidth || 'md'],
+            shadow: { none: 'shadow-none', sm: 'shadow-sm', md: 'shadow-md', lg: 'shadow-lg', xl: 'shadow-xl' }[s.shadow || 'lg'],
+            titleColor: s.titleColor || 'text-cyan-300',
+            backgroundColor: s.backgroundColor || 'bg-gray-800/50',
+            overlay: { none: '', light: 'bg-black/20', medium: 'bg-black/50', heavy: 'bg-black/70' }[s.backgroundOverlayStrength || (hasBgImage ? 'medium' : 'none')],
+        };
+    }, [entity.styles, entity.imageBase64]);
 
-                {resolvedAttributes.stuff.map(stuffGroup => (
-                    <div key={stuffGroup.setName} className="pt-3 mt-3 border-t border-gray-700/50">
-                        <h4 className="text-teal-400 font-semibold text-base mb-2">{stuffGroup.setName}</h4>
-                        <div className="space-y-3 pl-2">
-                            {stuffGroup.items.map(item => (
-                                <div key={item.name}>
-                                    <p className="text-gray-300 font-bold mb-1">{item.name}</p>
-                                    <div className="space-y-2 pl-2 border-l border-gray-600">
-                                      {item.attributes.map(resAttr => (
-                                          <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
-                                      ))}
+    return (
+        <div className={`relative ${styles.backgroundColor} ${styles.borderWidth} ${styles.borderColor} ${styles.shadow} rounded-lg backdrop-blur-sm transform hover:-translate-y-1 transition-all duration-300 flex flex-col overflow-hidden`}>
+            {entity.imageBase64 && (
+                <>
+                    <img src={entity.imageBase64} alt={entity.name} className="absolute inset-0 w-full h-full object-cover"/>
+                    <div className={`absolute inset-0 ${styles.overlay}`} />
+                </>
+            )}
+            <div className="relative z-10 p-6 flex flex-col flex-grow">
+                <h3 className={`text-xl font-bold ${styles.titleColor} mb-4`}>{entity.name}</h3>
+                <div className="space-y-3 text-sm flex-grow">
+                    {resolvedAttributes.templateAttributes.map(resAttr => (
+                        <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
+                    ))}
+
+                    {resolvedAttributes.stuff.map(stuffGroup => (
+                        <div key={stuffGroup.setName} className="pt-3 mt-3 border-t border-gray-700/50">
+                            <h4 className="text-teal-400 font-semibold text-base mb-2">{stuffGroup.setName}</h4>
+                            <div className="space-y-3 pl-2">
+                                {stuffGroup.items.map(item => (
+                                    <div key={item.name}>
+                                        <p className="text-gray-300 font-bold mb-1">{item.name}</p>
+                                        <div className="space-y-2 pl-2 border-l border-gray-600">
+                                          {item.attributes.map(resAttr => (
+                                              <AttributeDisplay key={resAttr.definition.id} resolvedAttribute={resAttr} entityMap={entityMap} />
+                                          ))}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </div>
     );

@@ -451,7 +451,11 @@ const App: React.FC = () => {
       </header>
       <main className="h-full pt-[57px]">
         {viewMode === 'editor' ? (
-          <PhoenixEditor gameData={gameData} onCommitChange={commitChange} />
+          <PhoenixEditor 
+            gameData={gameData} 
+            onCommitChange={commitChange} 
+            onLoadGame={handleLoadGame} 
+          />
         ) : (
           <div className="h-full overflow-y-auto">
             <MegaWattGame 

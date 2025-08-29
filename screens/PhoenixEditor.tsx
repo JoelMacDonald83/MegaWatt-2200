@@ -54,6 +54,7 @@ type EditingState =
 interface PhoenixEditorProps {
   gameData: GameData;
   onCommitChange: (gameData: GameData) => void;
+  onLoadGame: (jsonString: string) => void;
 }
 
 type ImportableKey = keyof typeof VALIDATORS;
@@ -81,7 +82,7 @@ const getDescendantIds = (templateId: string, templates: Template[]): string[] =
     return descendantIds;
 };
 
-export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommitChange }) => {
+export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommitChange, onLoadGame }) => {
   const [activeTab, setActiveTab] = useState<EditorTabs>('world');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
@@ -91,6 +92,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
   const [importLog, setImportLog] = useState<string[]>([]);
   const [toast, setToast] = useState({ show: false, message: '' });
   const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
+  const loadProjectInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     debugService.log("PhoenixEditor: Component mounted", { gameData });
@@ -320,7 +322,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
   
   const handleGenerateImage = useCallback(async (prompt: string, onUpdate: (base64: string) => void) => {
     debugService.log('PhoenixEditor: handleGenerateImage called', { prompt });
-    setIsGenerating('story_image');
+    setIsGenerating('image');
     try {
         const imageBase64 = await generateImageFromPrompt(prompt);
         debugService.log('PhoenixEditor: Image generation successful');
@@ -367,6 +369,30 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
     link.click();
   };
   
+  const handleLoadProjectClick = () => {
+    loadProjectInputRef.current?.click();
+  };
+
+  const handleProjectFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (window.confirm('Loading a project from file will overwrite your current work. Are you sure?')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target?.result;
+            if (typeof text === 'string') {
+                onLoadGame(text);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    if(event.target) {
+        event.target.value = '';
+    }
+  };
+
   const handleBulkImport = (dataType: ImportableKey) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -614,6 +640,12 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
         <div className="p-8 space-y-6">
             <h2 className="text-3xl font-bold text-teal-300">{entity.name}</h2>
             <p className="text-gray-400 italic">Instance of <span className="font-semibold text-gray-300">{template.name}</span></p>
+             {entity.imageBase64 && (
+                 <div>
+                    <h4 className="text-lg font-semibold text-gray-300 mb-2">Image</h4>
+                    <img src={entity.imageBase64} alt={entity.name} className="rounded-lg max-w-sm border border-gray-600"/>
+                 </div>
+            )}
              <div className="space-y-4 pt-4 border-t border-gray-700">
                 {template.attributes.length > 0 ? template.attributes.map(attr => {
                   const value = entity.attributeValues[attr.id];
@@ -677,7 +709,9 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
                 onCancel={handleCancelEdit}
                 gameData={gameData}
                 onGenerate={handleGenerateContent}
+                onGenerateImage={handleGenerateImage}
                 isGenerating={isGenerating}
+                isGeneratingImage={isGenerating === 'image'}
                 isNew={editingState.mode === 'new-entity'}
             />;
         case 'new-story-card':
@@ -688,7 +722,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
                 onSave={handleSaveStoryCard}
                 onCancel={handleCancelEdit}
                 onGenerateImage={handleGenerateImage}
-                isGenerating={isGenerating === 'story_image'}
+                isGenerating={isGenerating === 'image'}
                 isNew={editingState.mode === 'new-story-card'}
                 choices={gameData.choices}
             />;
@@ -702,7 +736,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
                 gameData={gameData}
                 isNew={editingState.mode === 'new-choice'}
                 onGenerateImage={handleGenerateImage}
-                isGeneratingImage={isGenerating === 'story_image'}
+                isGeneratingImage={isGenerating === 'image'}
             />;
         case 'new-stuff-set':
         case 'edit-stuff-set':
@@ -883,9 +917,9 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
         </aside>
       )}
 
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'world' ? (
-            <div className="p-8 overflow-y-auto">
+            <div className="flex-1 p-8 overflow-y-auto">
                 <h1 className="text-3xl font-bold text-cyan-300 mb-6">World Settings</h1>
                 <div className="max-w-xl space-y-8">
                     <div>
@@ -901,11 +935,19 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ gameData, onCommit
                     </div>
 
                     <div className="space-y-4 pt-8 border-t border-gray-700">
-                      <h2 className="text-xl font-semibold text-gray-300">Data Management</h2>
-                       <button onClick={handleExport} className="flex items-center justify-center gap-2 w-full bg-gray-700 hover:bg-gray-600 text-cyan-300 font-bold py-2 px-4 rounded transition duration-300">
-                          <ArrowDownTrayIcon className="w-5 h-5" />
-                          Export Project to JSON
-                        </button>
+                        <h2 className="text-xl font-semibold text-gray-300">Project Data Management</h2>
+                        <p className="text-sm text-gray-400">Save your entire project to a file on your device for backup, or load a project to continue your work.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <button onClick={handleExport} className="flex items-center justify-center gap-2 w-full bg-gray-700 hover:bg-gray-600 text-cyan-300 font-bold py-2 px-4 rounded transition duration-300">
+                                <ArrowDownTrayIcon className="w-5 h-5" />
+                                Save Project to File
+                            </button>
+                            <button onClick={handleLoadProjectClick} className="flex items-center justify-center gap-2 w-full bg-gray-700 hover:bg-gray-600 text-cyan-300 font-bold py-2 px-4 rounded transition duration-300">
+                                <ArrowUpTrayIcon className="w-5 h-5" />
+                                Load Project from File
+                            </button>
+                            <input type="file" accept=".json" ref={loadProjectInputRef} onChange={handleProjectFileChange} className="hidden" />
+                        </div>
                     </div>
 
                     <div className="space-y-6 pt-8 border-t border-gray-700">
