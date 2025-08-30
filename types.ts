@@ -30,6 +30,8 @@ export interface AttributeDefinition {
   type: 'string' | 'textarea' | 'number' | 'entity_reference';
   // If type is 'entity_reference', this is the ID of the template being referenced.
   referencedTemplateId?: string | null;
+  isPlayerEditable?: boolean;
+  playerEditOptions?: string[];
 }
 
 export interface Template {
@@ -136,7 +138,7 @@ export interface PlayerChoice {
     };
     
     // styles for the choice options themselves
-    choiceLayout?: 'grid' | 'carousel'; // Replaces old `layout`
+    choiceLayout?: 'buttons' | 'grid' | 'carousel'; // Replaces old `layout`
     promptStyles?: {
       fontSize?: 'normal' | 'large' | 'xlarge' | 'xxlarge';
       textColor?: string; // e.g., 'text-cyan-200'

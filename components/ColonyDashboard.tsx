@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import type { GameData, Entity, PlayerChoice, Template } from '../types';
 import { EntityCard } from './cards/EntityCard';
@@ -8,9 +9,10 @@ import { evaluateCondition } from '../services/conditionEvaluator';
 interface ColonyDashboardProps {
   gameData: GameData;
   onTriggerChoice: (choiceId: string) => void;
+  onEntityClick: (entity: Entity) => void;
 }
 
-export const ColonyDashboard: React.FC<ColonyDashboardProps> = ({ gameData, onTriggerChoice }) => {
+export const ColonyDashboard: React.FC<ColonyDashboardProps> = ({ gameData, onTriggerChoice, onEntityClick }) => {
 
   const availableChoices = useMemo(() => {
     const allNextChoiceIds = new Set<string>();
@@ -47,7 +49,7 @@ export const ColonyDashboard: React.FC<ColonyDashboardProps> = ({ gameData, onTr
   }, [gameData.entities, gameData.templates]);
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="h-full overflow-y-auto p-8 pt-24">
       <div className="space-y-12">
         {availableChoices.length > 0 && (
             <div>
@@ -65,7 +67,9 @@ export const ColonyDashboard: React.FC<ColonyDashboardProps> = ({ gameData, onTr
                 <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400/50 mb-4">// {template.name}s</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {entities.map(entity => (
-                        <EntityCard key={entity.id} entity={entity} />
+                        <button key={entity.id} onClick={() => onEntityClick(entity)} className="w-full h-full text-left focus-ring rounded-lg">
+                           <EntityCard entity={entity} />
+                        </button>
                     ))}
                 </div>
             </div>

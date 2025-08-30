@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle, ChoiceChunk } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
@@ -68,6 +63,7 @@ interface PhoenixEditorProps {
   onLoadProject: (jsonString: string) => void;
   onSaveProject: () => void;
   onStartSimulation: (game: GameData) => void;
+  showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 // Helper to get all descendants of a template
@@ -385,24 +381,18 @@ const GameEditor: React.FC<{
     onBack: () => void,
     onGenerateImage: (prompt: string, onUpdate: (base64: string) => void) => void,
     isGenerating: string | null,
-}> = ({ gameData, onCommitGameChange, onBack, onGenerateImage, isGenerating }) => {
+    showToast: (message: string, type?: 'success' | 'error') => void;
+}> = ({ gameData, onCommitGameChange, onBack, onGenerateImage, isGenerating, showToast }) => {
     const [activeTab, setActiveTab] = useState<EditorTabs>('game_menu');
     const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
     const [entityFilter, setEntityFilter] = useState<string>('all');
     const [deletionModalState, setDeletionModalState] = useState<DeletionModalState>({ type: 'none' });
     const [editingState, setEditingState] = useState<EditingState>({ mode: 'none' });
-    const [toast, setToast] = useState({ show: false, message: '' });
     const [editingNewsItem, setEditingNewsItem] = useState<NewsItem | { isNew: true } | null>(null);
     const [newMenuTag, setNewMenuTag] = useState('');
 
     const [draggedChoice, setDraggedChoice] = useState<{ choiceId: string; sourceChunkId: string } | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ chunkId: string; index: number } | null>(null);
-
-
-    const showToast = (message: string) => {
-        debugService.log("GameEditor: Showing toast", { message });
-        setToast({ show: true, message });
-    };
 
     const handleColonyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onCommitGameChange({ ...gameData, colonyName: e.target.value });
@@ -545,9 +535,16 @@ const GameEditor: React.FC<{
         const template = gameData.templates.find(t => t.id === entity.templateId);
         const attribute = template?.attributes.find(a => a.id === attributeId);
         const prompt = `Generate a gritty, cyberpunk-themed "${attribute?.name}" for a ${template?.name} named "${entity.name}" in a colony called "${gameData.colonyName}". The content should be concise and evocative (2-4 sentences).`;
-        const content = await generateStoryContent(prompt);
-        onUpdate({ ...entity, attributeValues: { ...entity.attributeValues, [attributeId]: content } });
-    }, [gameData.colonyName, gameData.templates]);
+        try {
+            const content = await generateStoryContent(prompt);
+            onUpdate({ ...entity, attributeValues: { ...entity.attributeValues, [attributeId]: content } });
+            showToast('Content generated successfully!');
+        } catch(error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            debugService.log('GameEditor: Failed to generate content', { error });
+            showToast(errorMessage, 'error');
+        }
+    }, [gameData.colonyName, gameData.templates, showToast]);
     
     const handleDropChoice = (targetChunkId: string, targetIndex: number) => {
         if (!draggedChoice) return;
@@ -734,8 +731,6 @@ const GameEditor: React.FC<{
             />
           )}
 
-           <Toast message={toast.message} show={toast.show} onClose={() => setToast({show: false, message: ''})} />
-
            <Modal
                 isOpen={deletionModalState.type === 'delete-chunk' || deletionModalState.type === 'delete-choice'}
                 onClose={() => setDeletionModalState({ type: 'none' })}
@@ -817,7 +812,7 @@ const TextStyleEditor: React.FC<{
     );
 };
 
-export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCommitChange, onLoadProject, onSaveProject, onStartSimulation }) => {
+export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCommitChange, onLoadProject, onSaveProject, onStartSimulation, showToast }) => {
     const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
     const [topLevelTab, setTopLevelTab] = useState<TopLevelTabs>('games');
     const [isGenerating, setIsGenerating] = useState<string | null>(null);
@@ -836,9 +831,14 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
         try {
             const imageBase64 = await generateImageFromPrompt(prompt);
             onUpdate(imageBase64);
-        } catch (error) { alert((error as Error).message); } 
+            showToast('Image generated successfully!');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            debugService.log('PhoenixEditor: Failed to generate image', { error });
+            showToast(errorMessage, 'error');
+        } 
         finally { setIsGenerating(null); }
-    }, []);
+    }, [showToast]);
 
     const commitGameChange = (updatedGameData: GameData) => {
         const newGames = projectData.games.map(g => g.id === updatedGameData.id ? updatedGameData : g);
@@ -917,7 +917,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
             };
             reader.readAsDataURL(file);
         } else if (file) {
-            alert('Please select a valid image file.');
+            showToast('Please select a valid image file.', 'error');
         }
     }
 
@@ -929,6 +929,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                 onBack={() => setSelectedGameId(null)}
                 onGenerateImage={handleGenerateImage}
                 isGenerating={isGenerating}
+                showToast={showToast}
             />
         );
     }

@@ -25,6 +25,22 @@ const AttributeInput: React.FC<{
     onChange: (value: string | number | null) => void;
     gameData: GameData;
 }> = ({ attribute, value, onChange, gameData }) => {
+    
+    if (attribute.isPlayerEditable && attribute.playerEditOptions && attribute.type === 'string') {
+        return (
+            <select
+                value={(value as string) || ''}
+                onChange={e => onChange(e.target.value)}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"
+            >
+                <option value="">-- Select Default Value --</option>
+                {(attribute.playerEditOptions || []).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                ))}
+            </select>
+        );
+    }
+
     switch(attribute.type) {
         case 'textarea':
             return (

@@ -10,6 +10,7 @@ import { ArrowLeftIcon } from '../components/icons/ArrowLeftIcon';
 import { HomeIcon } from '../components/icons/HomeIcon';
 import { ChevronLeftIcon } from '../components/icons/ChevronLeftIcon';
 import { ChevronRightIcon } from '../components/icons/ChevronRightIcon';
+import { EntityCard } from '../components/cards/EntityCard';
 
 // --- SHARED UTILS ---
 
@@ -113,6 +114,32 @@ const parsePlaceholders = (text: string | undefined, entity: Entity, template: T
     return processedText;
 }
 
+const ChoiceEntityCard: React.FC<{
+    option: ChoiceOption;
+    gameData: GameData;
+    onClick: () => void;
+}> = ({ option, gameData, onClick }) => {
+    const entity = useMemo(() => {
+        if (!option.sourceEntityId) return null;
+        return gameData.entities.find(e => e.id === option.sourceEntityId);
+    }, [option.sourceEntityId, gameData.entities]);
+
+    if (!entity) {
+        // Fallback to a button if entity not found or for static options in a card layout
+        return (
+            <button onClick={onClick} className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">
+                {option.text}
+            </button>
+        );
+    }
+    
+    return (
+        <button onClick={onClick} className="w-48 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-cyan-400 rounded-lg">
+            <EntityCard entity={entity} />
+        </button>
+    );
+};
+
 export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData; onComplete: (option?: ChoiceOption) => void; animationState: 'in' | 'out'; isFirstScene: boolean }> = ({ choice, gameData, onComplete, animationState, isFirstScene }) => {
     const styles = useMemo(() => {
         const s = choice.styles || {};
@@ -134,6 +161,7 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
             textAnimation: s.textAnimation || 'fade-in',
             textAnimationDuration: s.textAnimationDuration || 1,
             textAnimationDelay: s.textAnimationDelay || 0.5,
+            choiceLayout: s.choiceLayout || 'buttons',
             prompt: {
                 fontSize: ps.fontSize || 'normal',
                 textColor: ps.textColor || 'text-cyan-200',
@@ -246,9 +274,22 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
                     {choice.prompt ? (
                         <div className="space-y-6">
                             <p className={`transition-colors duration-300 ${promptFontSizeClass} ${styles.prompt.textColor}`}>{choice.prompt}</p>
-                            <div className="flex justify-center flex-wrap gap-4">
-                                {choiceOptions.map(option => (<button key={option.id} onClick={() => onComplete(option)} className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">{option.text}</button>))}
-                            </div>
+                            {styles.choiceLayout === 'buttons' ? (
+                                <div className="flex justify-center flex-wrap gap-4">
+                                    {choiceOptions.map(option => (<button key={option.id} onClick={() => onComplete(option)} className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">{option.text}</button>))}
+                                </div>
+                            ) : (
+                                <div className="flex justify-center flex-wrap gap-6">
+                                    {choiceOptions.map(option => (
+                                        <ChoiceEntityCard
+                                            key={option.id}
+                                            option={option}
+                                            gameData={gameData}
+                                            onClick={() => onComplete(option)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ) : ( <button onClick={() => onComplete()} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-12 rounded-full transition-all duration-300 transform hover:scale-105 text-lg">Continue</button> )}
                 </div>

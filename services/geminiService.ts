@@ -1,10 +1,13 @@
 
 import { GoogleGenAI } from "@google/genai";
+import { debugService } from "./debugService";
 
 // Ensure the API key is available from environment variables
 const apiKey = process.env.API_KEY;
 if (!apiKey) {
-  throw new Error("API_KEY environment variable not set");
+  const errorMessage = "API_KEY environment variable not set. Please check your configuration.";
+  debugService.log("CRITICAL: Gemini Service Initialization Failed", { error: errorMessage });
+  throw new Error(errorMessage);
 }
 
 const ai = new GoogleGenAI({ apiKey });
@@ -21,8 +24,9 @@ export const generateStoryContent = async (prompt: string): Promise<string> => {
     });
     return response.text;
   } catch (error) {
-    console.error("Error generating content with Gemini API:", error);
-    return "Error: Could not generate content. Please check the console for details.";
+    debugService.log("Gemini API Error (generateStoryContent)", { error });
+    // Re-throw a user-friendly error to be handled by the caller
+    throw new Error("Failed to generate story content. The AI service may be unavailable or experiencing issues.");
   }
 };
 
@@ -42,10 +46,14 @@ export const generateImageFromPrompt = async (prompt: string): Promise<string> =
     if (base64ImageBytes) {
         return base64ImageBytes;
     }
-    throw new Error("API did not return an image.");
+    // This case is unlikely but good to have
+    const noImageError = new Error("API did not return an image despite a successful response.");
+    debugService.log("Gemini API Warning (generateImageFromPrompt)", { error: noImageError });
+    throw noImageError;
 
   } catch (error) {
-    console.error("Error generating image with Gemini API:", error);
-    throw new Error("Error: Could not generate image. Please check the console for details.");
+    debugService.log("Gemini API Error (generateImageFromPrompt)", { error });
+    // Re-throw a user-friendly error
+    throw new Error("Failed to generate image. The AI service may be unavailable or the prompt may have been blocked.");
   }
 };

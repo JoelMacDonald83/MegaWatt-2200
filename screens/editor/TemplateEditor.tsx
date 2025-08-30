@@ -7,6 +7,7 @@ import { TrashIcon } from '../../components/icons/TrashIcon';
 import { PlusIcon } from '../../components/icons/PlusIcon';
 import { HelpTooltip } from '../../components/HelpTooltip';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import { ToggleSwitch } from '../../components/ToggleSwitch';
 
 interface TemplateEditorProps {
     template: Template;
@@ -116,6 +117,7 @@ const useResolvedTemplate = (template: Template, allTemplates: Template[]) => {
 
 export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChange, onSave, onCancel, gameData, isNew }) => {
     const [newTag, setNewTag] = useState('');
+    const [newPlayerOptions, setNewPlayerOptions] = useState<{[key: string]: string}>({});
 
     useEffect(() => {
         debugService.log('TemplateEditor: Component mounted or received new props.', { template, isNew });
@@ -278,7 +280,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                 <CollapsibleSection title="Own Attributes">
                     <HelpTooltip title="Own Attributes" content="These are the data fields defined directly on this blueprint. Entities created from this blueprint will have these fields available to store data." />
                     {template.attributes.map(attr => (
-                        <div key={attr.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md">
+                        <div key={attr.id} className="bg-[var(--bg-input)]/50 p-3 rounded-md border border-[var(--border-secondary)]">
                             <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
                                 <div>
                                     <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Attribute Name</label>
@@ -308,6 +310,68 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onChan
                                         <option value="">-- Select Template to Reference --</option>
                                         {allTemplates.filter(t => !t.isComponent).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </select>
+                                </div>
+                            )}
+                            <div className="pt-3 mt-3 border-t border-[var(--border-secondary)]/50">
+                                <ToggleSwitch 
+                                    label="Player Editable"
+                                    enabled={!!attr.isPlayerEditable}
+                                    onChange={(enabled) => updateAttribute(attr.id, { isPlayerEditable: enabled })}
+                                    help="If enabled, players can change this attribute's value during the simulation from a pre-defined list of options. (Only for 'String' type)."
+                                />
+                            </div>
+                            {attr.isPlayerEditable && attr.type === 'string' && (
+                                <div className="pt-3 mt-3 border-t border-[var(--border-secondary)]/50">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Player Options</label>
+                                        <HelpTooltip title="Player Options" content="Define the list of options players can choose from for this attribute." />
+                                    </div>
+                                    <div className="space-y-2">
+                                        {(attr.playerEditOptions || []).map((opt, index) => (
+                                            <div key={index} className="flex items-center justify-between bg-[var(--bg-panel)] p-2 rounded text-sm">
+                                                <span className="text-[var(--text-primary)]">{opt}</span>
+                                                <button onClick={() => {
+                                                    const newOpts = (attr.playerEditOptions || []).filter((_, i) => i !== index);
+                                                    updateAttribute(attr.id, { playerEditOptions: newOpts });
+                                                }}>
+                                                    <TrashIcon className="w-4 h-4 text-[var(--text-secondary)] hover:text-[var(--text-danger)]" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                     <div className="flex gap-2 mt-2">
+                                        <input 
+                                            type="text"
+                                            value={newPlayerOptions[attr.id] || ''}
+                                            onChange={e => setNewPlayerOptions({...newPlayerOptions, [attr.id]: e.target.value})}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const newOpt = newPlayerOptions[attr.id]?.trim();
+                                                    if (newOpt) {
+                                                        const newOpts = [...(attr.playerEditOptions || []), newOpt];
+                                                        updateAttribute(attr.id, { playerEditOptions: newOpts });
+                                                        setNewPlayerOptions({...newPlayerOptions, [attr.id]: ''});
+                                                    }
+                                                }
+                                            }}
+                                            placeholder="New option..."
+                                            className="flex-grow bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-2 text-sm"
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const newOpt = newPlayerOptions[attr.id]?.trim();
+                                                if (newOpt) {
+                                                    const newOpts = [...(attr.playerEditOptions || []), newOpt];
+                                                    updateAttribute(attr.id, { playerEditOptions: newOpts });
+                                                    setNewPlayerOptions({...newPlayerOptions, [attr.id]: ''});
+                                                }
+                                            }}
+                                            className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded text-sm"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>

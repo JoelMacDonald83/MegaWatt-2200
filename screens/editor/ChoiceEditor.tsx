@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome, Template } from '../../types';
 import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
@@ -591,6 +592,18 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                 <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Player Prompt</label>
                                 <input type="text" value={localChoice.prompt || ''} onChange={e => updateField('prompt', e.target.value)} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                             </div>
+                            <StyleRadio
+                                label="Option Layout"
+                                name="choiceLayout"
+                                value={localChoice.styles?.choiceLayout || 'buttons'}
+                                onChange={e => updateStyle('choiceLayout', e.target.value)}
+                                options={[
+                                    { value: 'buttons', label: 'Buttons' },
+                                    { value: 'grid', label: 'Card Grid' },
+                                    { value: 'carousel', label: 'Card Carousel' },
+                                ]}
+                                help="Choose how the options are displayed. 'Buttons' is standard. 'Card Grid' and 'Carousel' are best for dynamic choices representing entities."
+                            />
                             <div className="p-3 bg-[var(--bg-input)]/40 rounded-lg border border-[var(--border-primary)]">
                                 <StyleRadio 
                                     label="Choice Type"

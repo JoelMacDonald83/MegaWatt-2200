@@ -1,9 +1,10 @@
 
 
 import React, { useState, useMemo } from 'react';
-import type { GameData, PlayerChoice, ChoiceOption, ChoiceOutcome } from '../types';
+import type { GameData, PlayerChoice, ChoiceOption, ChoiceOutcome, Entity } from '../types';
 import { ScenePresenter } from './MegaWattGame';
 import { ColonyDashboard } from '../components/ColonyDashboard';
+import { EntityDetailModal } from '../components/simulation/EntityDetailModal';
 
 interface SimulationScreenProps {
   gameData: GameData;
@@ -14,6 +15,7 @@ export const SimulationScreen: React.FC<SimulationScreenProps> = ({ gameData, on
   const [activeChoiceId, setActiveChoiceId] = useState<string | null>(null);
   const [prevChoiceId, setPrevChoiceId] = useState<string | null>(null);
   const [animationState, setAnimationState] = useState<'in' | 'out'>('in');
+  const [detailedEntity, setDetailedEntity] = useState<Entity | null>(null);
 
   const activeChoice = useMemo(() => {
     return gameData.allChoices.find(c => c.id === activeChoiceId);
@@ -59,11 +61,25 @@ export const SimulationScreen: React.FC<SimulationScreenProps> = ({ gameData, on
     }, transitionDuration * 1000 + 100);
   };
 
+  const handleAttributeUpdate = (entityId: string, attributeId: string, value: string | number | null) => {
+    const outcome: ChoiceOutcome = {
+        type: 'update_entity',
+        targetEntityId: entityId,
+        attributeId: attributeId,
+        value: value,
+    };
+    onChoiceMade([outcome]);
+    // The modal should close after an update. The updated data will be reflected
+    // in the main dashboard after the gameData state updates.
+    setDetailedEntity(null);
+  };
+
   return (
     <div className="h-full bg-grid" style={{ "--grid-bg-color": "rgba(45, 212, 191, 0.05)" } as React.CSSProperties}>
       <ColonyDashboard
         gameData={gameData}
         onTriggerChoice={handleTriggerChoice}
+        onEntityClick={setDetailedEntity}
       />
       {activeChoice && (
         <ScenePresenter
@@ -72,6 +88,15 @@ export const SimulationScreen: React.FC<SimulationScreenProps> = ({ gameData, on
           onComplete={handleSceneCompletion}
           animationState={animationState}
           isFirstScene={!prevChoiceId}
+        />
+      )}
+      {detailedEntity && (
+        <EntityDetailModal
+            isOpen={!!detailedEntity}
+            onClose={() => setDetailedEntity(null)}
+            entity={detailedEntity}
+            gameData={gameData}
+            onAttributeChange={handleAttributeUpdate}
         />
       )}
     </div>

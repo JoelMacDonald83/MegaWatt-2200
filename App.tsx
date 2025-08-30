@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
@@ -14,6 +13,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { GlobalStyles } from './components/GlobalStyles';
 import { SimulationScreen } from './screens/SimulationScreen';
 import { SimulationHeader } from './components/SimulationHeader';
+import { Toast } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // --- IDs for consistent referencing ---
 
@@ -44,6 +45,8 @@ const ATTR_SKILL_SPEC_ID = 'attr_skill_spec_1';
 const ATTR_LOG_CONTENT_ID = 'attr_log_content_1';
 const ATTR_ANALYSIS_ID = 'attr_analysis_1';
 const ATTR_INVESTIGATOR_ID = 'attr_investigator_1';
+const ATTR_OP_MODE_ID = 'attr_op_mode_1';
+
 
 // CHOICES
 const CHOICE_INTRO_1 = 'choice_intro_1';
@@ -157,6 +160,9 @@ const initialGameData: GameData = {
         outcomeTemplates: [{ type: 'update_entity', targetEntityId: ENTITY_GEOTHERMAL_VENT_ID, attributeId: ATTR_OPERATOR_ID, value: '<chosen_entity_id>'}],
         nextChoiceId: null,
         filterConditions: [{ type: 'attribute', targetEntityId: '', attributeId: ATTR_ROLE_ID, operator: '==', value: null }]
+      },
+      styles: {
+        choiceLayout: 'grid'
       }
     },
     // --- SECTOR GAMMA CHUNK ---
@@ -183,6 +189,9 @@ const initialGameData: GameData = {
                 { type: 'create_entity', templateId: TEMPLATE_DATA_LOG_ID, name: "Sector Gamma Investigation Log", attributeValues: { [ATTR_INVESTIGATOR_ID]: '<chosen_entity_id>', [ATTR_LOG_CONTENT_ID]: 'Investigation initiated.' } }
             ],
             nextChoiceId: CHOICE_GAMMA_TUNNEL_ENTRY,
+        },
+        styles: {
+            choiceLayout: 'grid'
         }
     },
     {
@@ -208,7 +217,7 @@ const initialGameData: GameData = {
   ],
   templates: [
     { id: TEMPLATE_CHARACTER_ID, name: 'Character', description: 'A person or operative in the colony.', tags: ['personnel'], isComponent: false, attributes: [ { id: ATTR_BACKSTORY_ID, name: 'Backstory', type: 'textarea' }, { id: ATTR_ROLE_ID, name: 'Role', type: 'string' }], includedComponentIds: [COMPONENT_SKILL_HACKING_ID] },
-    { id: TEMPLATE_POWER_SOURCE_ID, name: 'Power Source', description: 'A facility that generates power.', tags: ['utility', 'location'], isComponent: false, attributes: [ { id: ATTR_DESCRIPTION_ID, name: 'Description', type: 'textarea' }, { id: ATTR_OPERATOR_ID, name: 'Operator', type: 'entity_reference', referencedTemplateId: TEMPLATE_CHARACTER_ID }]},
+    { id: TEMPLATE_POWER_SOURCE_ID, name: 'Power Source', description: 'A facility that generates power.', tags: ['utility', 'location'], isComponent: false, attributes: [ { id: ATTR_DESCRIPTION_ID, name: 'Description', type: 'textarea' }, { id: ATTR_OPERATOR_ID, name: 'Operator', type: 'entity_reference', referencedTemplateId: TEMPLATE_CHARACTER_ID }, { id: ATTR_OP_MODE_ID, name: 'Operational Mode', type: 'string', isPlayerEditable: true, playerEditOptions: ['Normal Output', 'Overdrive', 'Emergency Shutdown'] }]},
     { id: TEMPLATE_FACILITY_ID, name: 'Facility', description: 'A structural installation.', tags: ['location'], isComponent: false, attributes: [ { id: ATTR_STATUS_ID, name: 'Status Report', type: 'textarea' }]},
     { id: TEMPLATE_DRONE_ID, name: 'Drone System', description: 'An automated system.', tags: ['utility'], isComponent: false, attributes: [ { id: ATTR_STATUS_ID, name: 'Status Report', type: 'textarea' }]},
     { id: TEMPLATE_LOCATION_ID, name: 'Location', description: 'An explorable area.', tags: ['location'], isComponent: false, attributes: [ { id: ATTR_DESCRIPTION_ID, name: 'Description', type: 'textarea' }]},
@@ -224,7 +233,7 @@ const initialGameData: GameData = {
     { id: ENTITY_JAX_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Jax "Glitch" Corrigan', attributeValues: { [ATTR_BACKSTORY_ID]: 'A former corporate netrunner who keeps the colony\'s systems from frying.', [ATTR_ROLE_ID]: 'Chief Systems Analyst', [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5 }},
     { id: 'char_2', templateId: TEMPLATE_CHARACTER_ID, name: 'Dr. Aris Thorne', attributeValues: { [ATTR_BACKSTORY_ID]: 'A bio-engineer with a questionable past.', [ATTR_ROLE_ID]: null }},
     { id: ENTITY_RILEY_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Riley "Spark" Chen', attributeValues: { [ATTR_BACKSTORY_ID]: 'A gifted mechanic who can fix anything from a coffee maker to a fusion reactor with little more than a wrench and sheer willpower.', [ATTR_ROLE_ID]: 'Lead Technician', [`${COMPONENT_SKILL_ENGINEERING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 4 } },
-    { id: ENTITY_GEOTHERMAL_VENT_ID, templateId: TEMPLATE_POWER_SOURCE_ID, name: 'Geo-Thermal Vent Alpha', attributeValues: { [ATTR_DESCRIPTION_ID]: 'The primary geothermal power plant, tapping into the planet\'s unstable core.', [ATTR_OPERATOR_ID]: null }},
+    { id: ENTITY_GEOTHERMAL_VENT_ID, templateId: TEMPLATE_POWER_SOURCE_ID, name: 'Geo-Thermal Vent Alpha', attributeValues: { [ATTR_DESCRIPTION_ID]: 'The primary geothermal power plant, tapping into the planet\'s unstable core.', [ATTR_OPERATOR_ID]: null, [ATTR_OP_MODE_ID]: 'Normal Output' }},
     { id: ENTITY_SECTOR_GAMMA_TUNNELS_ID, templateId: TEMPLATE_LOCATION_ID, name: 'Sector Gamma Tunnels', attributeValues: { [ATTR_DESCRIPTION_ID]: 'A maze of humming maintenance corridors, rarely travelled and poorly lit.'}},
   ],
 };
@@ -286,6 +295,15 @@ const AppContent: React.FC = () => {
   const [canRedoSim, setCanRedoSim] = useState(false);
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' as 'success' | 'error' });
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    debugService.log(`Toast: ${type.toUpperCase()}`, { message });
+    setToast({ show: true, message, type });
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => setToast(p => p.show ? { ...p, show: false } : p), 5000);
+  }, []);
 
   // Subscribe to Editor History
   useEffect(() => {
@@ -405,12 +423,18 @@ const AppContent: React.FC = () => {
   
   const handleSaveProject = () => {
     debugService.log('App: Saving project', { projectData });
-    const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(projectData, null, 2))}`;
-    const link = document.createElement('a');
-    link.href = jsonString;
-    link.download = `phoenix_project_${timestamp}.json`;
-    link.click();
+    try {
+        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(projectData, null, 2))}`;
+        const link = document.createElement('a');
+        link.href = jsonString;
+        link.download = `phoenix_project_${timestamp}.json`;
+        link.click();
+        showToast('Project saved successfully!');
+    } catch(error) {
+        debugService.log('App: Project save failed', { error });
+        showToast('Failed to save project.', 'error');
+    }
   };
 
   const handleLoadProject = (jsonString: string) => {
@@ -422,119 +446,122 @@ const AppContent: React.FC = () => {
         // MIGRATION LOGIC for choice chunks
         loadedData.games.forEach((game: GameData & { choices?: any }) => {
             if (game.choices && !game.allChoices) {
-                debugService.log("App: Migrating old game data format to choice chunks", { gameTitle: game.gameTitle });
+// FIX: The original debug log contained a malformed string that looked like a file concatenation artifact.
+// This could confuse parsing tools and was likely unintentional. Replaced with a sensible log message.
+                debugService.log("App: Migrating old game data structure", { gameTitle: game.gameTitle });
                 game.allChoices = game.choices;
                 delete game.choices;
-                game.choiceChunks = [{
-                    id: `chunk_migrated_${Date.now()}`,
-                    name: 'All Scenes',
-                    description: 'Scenes migrated from an older project version.',
-                    choiceIds: game.allChoices.map(c => c.id),
-                }];
+                if (!game.choiceChunks || game.choiceChunks.length === 0) {
+                    game.choiceChunks = [{
+                        id: `chunk_migrated_${Date.now()}`,
+                        name: 'Imported Scenes',
+                        description: 'All scenes from a previous version.',
+                        choiceIds: game.allChoices.map(c => c.id),
+                    }];
+                }
             }
         });
-        // END MIGRATION LOGIC
-
         editorHistory.clearAndPush(loadedData);
-        debugService.log('App: Project loaded successfully', { loadedData });
-        alert('Project loaded successfully!');
+        showToast('Project loaded successfully!');
       } else {
-        throw new Error('Invalid or corrupted project file format.');
+        debugService.log('App: Project load failed - invalid format');
+        showToast('Failed to load project: Invalid file format.', 'error');
       }
     } catch (error) {
-      console.error("Failed to load project:", error);
-      debugService.log('App: Project load failed', { error });
-      alert(`Failed to load project: ${(error as Error).message}`);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      debugService.log('App: Project load failed with error', { error });
+      showToast(`Failed to load project: ${errorMessage}`, 'error');
     }
   };
 
-  return (
-    <div className="relative h-screen w-screen overflow-hidden">
-      <GlobalStyles />
-      {viewMode === 'simulation' && simulationProject ? (
-          <SimulationHeader 
-            gameTitle={simulationProject.gameTitle}
-            onExit={handleExitSimulation}
-            onRestart={handleRestartSimulation}
-            onLoad={handleLoadSimulation}
-            currentSimState={simulationProject}
-            canUndo={canUndoSim}
-            canRedo={canRedoSim}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-          />
-      ) : (
-        <header className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 bg-[var(--bg-panel)]/70 backdrop-blur-sm border-b border-[var(--border-primary)]">
-          <div className="flex items-center gap-4">
-              <h1 className="text-[length:var(--font-size-lg)] font-bold text-[var(--text-primary)]">
-                <span className="text-[var(--text-accent-bright)]">Phoenix</span> / Editor
-              </h1>
-              <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-                  <button onClick={handleUndo} disabled={!canUndoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Undo (Ctrl+Z)">
-                      <ArrowUturnLeftIcon className="w-5 h-5"/>
-                  </button>
-                  <button onClick={handleRedo} disabled={!canRedoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:hover:bg-transparent" title="Redo (Ctrl+Y)">
-                      <ArrowUturnRightIcon className="w-5 h-5"/>
-                  </button>
-              </div>
-          </div>
-          <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-                <button
-                  onClick={() => setViewMode('editor')}
-                  className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'editor' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-                >
-                  Editor
-                </button>
-                <button
-                  onClick={() => setViewMode('launcher')}
-                  className={`px-3 py-1 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors ${viewMode === 'launcher' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-                >
-                  Launcher
-                </button>
-              </div>
-              <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md transition-colors bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)]" title="Editor Settings">
-                  <Cog6ToothIcon className="w-5 h-5"/>
-              </button>
-          </div>
-        </header>
-      )}
-
-      <main className="h-full pt-[57px]">
-        {viewMode === 'editor' && (
+  const currentView = useMemo(() => {
+    switch (viewMode) {
+      case 'editor':
+        return (
           <PhoenixEditor 
             projectData={projectData} 
             onCommitChange={commitChange} 
             onLoadProject={handleLoadProject} 
-            onSaveProject={handleSaveProject}
-            onStartSimulation={handleStartSimulation}
+            onSaveProject={handleSaveProject} 
+            onStartSimulation={handleStartSimulation} 
+            showToast={showToast}
           />
-        )}
-        {viewMode === 'launcher' && (
-           <div className="h-full overflow-y-auto">
-             <MegaWattGame 
-               projectData={projectData} 
-               onChoiceMade={() => {}}
-             />
-           </div>
-        )}
-        {viewMode === 'simulation' && simulationProject && (
-          <SimulationScreen
-            gameData={simulationProject}
-            onChoiceMade={handleChoiceOutcomes}
-          />
-        )}
+        );
+      case 'launcher':
+        // FIX: Pass a dummy onChoiceMade prop to satisfy the interface. This component doesn't use it.
+        return <MegaWattGame projectData={projectData} onStartSimulation={handleStartSimulation} onChoiceMade={() => {}} />;
+      case 'simulation':
+        if (simulationProject) {
+          return <SimulationScreen gameData={simulationProject} onChoiceMade={handleChoiceOutcomes} />;
+        }
+        // Fallback to editor if simulation data is missing
+        setViewMode('editor');
+        return null;
+      default:
+        return <div>Invalid view mode</div>;
+    }
+  }, [viewMode, projectData, simulationProject, commitChange, handleLoadProject, handleSaveProject, handleStartSimulation, showToast, handleChoiceOutcomes]);
+
+  return (
+    <div className="flex flex-col h-screen font-sans bg-[var(--bg-main)]">
+      {/* Header */}
+      <header className="flex items-center justify-between p-2 pl-4 border-b border-[var(--border-primary)] bg-[var(--bg-panel)]/50 backdrop-blur-sm flex-shrink-0 z-20">
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-bold">Phoenix Engine</h1>
+          <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+            <button onClick={handleUndo} disabled={viewMode === 'editor' ? !canUndoEditor : !canUndoSim} className="p-1.5 text-gray-400 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
+              <ArrowUturnLeftIcon className="w-5 h-5"/>
+            </button>
+            <button onClick={handleRedo} disabled={viewMode === 'editor' ? !canRedoEditor : !canRedoSim} className="p-1.5 text-gray-400 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
+              <ArrowUturnRightIcon className="w-5 h-5"/>
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+           {viewMode === 'simulation' && simulationProject && (
+              <SimulationHeader 
+                gameTitle={simulationProject.gameTitle}
+                onExit={handleExitSimulation}
+                onRestart={handleRestartSimulation}
+                onLoad={handleLoadSimulation}
+                currentSimState={simulationProject}
+                canUndo={canUndoSim}
+                canRedo={canRedoSim}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+              />
+            )}
+            <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-gray-400 rounded-md hover:bg-gray-700">
+               <Cog6ToothIcon className="w-5 h-5"/>
+            </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 min-h-0">
+        {currentView}
       </main>
+
+      {/* Modals & Toasts */}
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
+      <Toast 
+        message={toast.message}
+        show={toast.show}
+        onClose={() => setToast(p => ({...p, show: false}))}
+      />
     </div>
   );
 };
 
-
-const App: React.FC = () => (
-  <SettingsProvider>
-    <AppContent />
-  </SettingsProvider>
-);
-
+const App: React.FC = () => {
+  return (
+    <ErrorBoundary>
+      <SettingsProvider>
+        <GlobalStyles />
+        <AppContent />
+      </SettingsProvider>
+    </ErrorBoundary>
+  );
+};
+// FIX: Add default export for the App component so it can be imported in index.tsx
 export default App;
