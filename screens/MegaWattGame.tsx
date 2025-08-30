@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle } from '../types';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { PlayIcon } from '../components/icons/PlayIcon';
@@ -11,6 +11,7 @@ import { HomeIcon } from '../components/icons/HomeIcon';
 import { ChevronLeftIcon } from '../components/icons/ChevronLeftIcon';
 import { ChevronRightIcon } from '../components/icons/ChevronRightIcon';
 import { EntityCard } from '../components/cards/EntityCard';
+import { CreditDisplay } from '../components/CreditDisplay';
 
 // --- SHARED UTILS ---
 
@@ -62,7 +63,10 @@ const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
                         <div className="p-6">
                             <div className={layoutClasses.container}>
                                 {item.imageBase64 && (
-                                    <img src={item.imageBase64} alt={item.title} className={layoutClasses.image} />
+                                    <div className="relative">
+                                        <img src={item.imageBase64} alt={item.title} className={layoutClasses.image} />
+                                        {item.imageCredit && <CreditDisplay credit={item.imageCredit} className="bottom-2 right-2" />}
+                                    </div>
                                 )}
                                 <div className="flex-grow">
                                     <div className="flex justify-between items-start mb-1 text-[var(--text-secondary)] text-sm">
@@ -266,8 +270,16 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
     return (
         <div className={`fixed inset-0 bg-black ${sceneTransitionClass} z-30`} style={sceneStyle}>
             {choice.imageBase64 && <div className={`absolute inset-0 bg-cover bg-center ${styles.backgroundAnimation !== 'none' ? `anim-bg-${styles.backgroundAnimation}` : ''} ${backgroundEffectClass} transition-all duration-300`} style={bgStyle} />}
+            {choice.imageCredit && <CreditDisplay credit={choice.imageCredit} className="bottom-2 right-2" />}
             <div className={`absolute inset-0 ${overlayClass}`} />
-            {choice.foregroundImageBase64 && <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}><img src={choice.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full ${fgSizeClass} ${fgAnimationClass}`} alt="Foreground Element"/></div>}
+            {choice.foregroundImageBase64 && 
+                <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}>
+                    <div className={`relative ${fgSizeClass}`}>
+                         <img src={choice.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full w-full ${fgAnimationClass}`} alt="Foreground Element"/>
+                         {choice.foregroundImageCredit && <CreditDisplay credit={choice.foregroundImageCredit} className="top-0 right-0" />}
+                    </div>
+                </div>
+            }
             <div className={`relative z-10 flex flex-col h-full p-8 md:p-16 ${positionClass} ${textAlignClass}`}>
                 <div className={`w-full ${textWidthClass}`}>
                     <p style={textStyle} className={`leading-relaxed mb-12 ${styles.textColor} [text-shadow:0_2px_10px_rgba(0,0,0,0.5)] ${fontFamilyClass} ${fontSizeClass} ${textAnimationClass}`}>{choice.description}</p>
@@ -303,7 +315,7 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
 const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: () => void}> = ({ gameData, onPlay, onBack }) => {
     const [activeMenu, setActiveMenu] = useState<'main' | 'news' | 'credits'>('main');
     const { menuSettings } = gameData;
-    const bgImage = menuSettings.showcaseImages?.[0]?.base64;
+    const bgImage = menuSettings.showcaseImages?.[0];
 
     const MenuButton: React.FC<{ section: any; icon: React.ReactNode; label: string; }> = ({ section, icon, label }) => (
         <button onClick={() => setActiveMenu(section)} className={`flex items-center gap-3 w-full p-3 text-left rounded-md transition-colors text-[length:var(--font-size-sm)] ${activeMenu === section ? 'bg-[var(--text-accent)]/20 text-[var(--text-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}>
@@ -314,7 +326,8 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
 
     return (
         <div className="relative min-h-screen bg-black text-white flex">
-            {bgImage && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage})`, animationDuration: '45s' }} />}
+            {bgImage?.base64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage.base64})`, animationDuration: '45s' }} />}
+            {bgImage?.credit && <CreditDisplay credit={bgImage.credit} className="bottom-2 right-2" />}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             
             <aside className="relative z-10 w-64 bg-[var(--bg-panel)]/30 p-4 flex flex-col space-y-2 border-r border-[var(--border-primary)]/50">
@@ -473,8 +486,9 @@ const GamePreviewCard: React.FC<{
     if (layout === 'grid') {
         return (
             <div className={`rounded-lg overflow-hidden flex flex-col ${hoverClasses}`} style={cardDynamicStyle}>
-                <div className={`${aspectRatioClass}`}>
+                <div className={`relative ${aspectRatioClass}`}>
                     {imageContent}
+                    {coverImage?.credit && <CreditDisplay credit={coverImage.credit} className="bottom-1 right-1" />}
                 </div>
                 <div className="p-4 flex flex-col flex-grow">
                     <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
@@ -490,8 +504,9 @@ const GamePreviewCard: React.FC<{
     // List Layout
     return (
          <div className={`rounded-lg overflow-hidden flex items-center ${hoverClasses}`} style={cardDynamicStyle}>
-            <div className={`w-1/3 flex-shrink-0 ${aspectRatioClass}`}>
+            <div className={`relative w-1/3 flex-shrink-0 ${aspectRatioClass}`}>
                 {imageContent}
+                {coverImage?.credit && <CreditDisplay credit={coverImage.credit} className="bottom-1 right-1" />}
             </div>
             <div className="p-4 flex flex-col flex-grow">
                  <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
@@ -550,6 +565,7 @@ const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameD
     return (
         <div className="relative min-h-screen bg-black text-white flex flex-col">
             {settings.backgroundImageBase64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${settings.backgroundImageBase64})` }} />}
+            {settings.backgroundImageCredit && <CreditDisplay credit={settings.backgroundImageCredit} className="bottom-2 right-2" />}
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
             <header className="relative z-10 p-4 text-center border-b border-[var(--border-primary)]/50">

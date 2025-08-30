@@ -45,6 +45,12 @@ export interface Template {
   includedComponentIds?: string[]; // Array of Template IDs where isComponent is true.
 }
 
+export interface ImageCredit {
+  artistName?: string;
+  sourceUrl?: string;
+  socialsUrl?: string;
+}
+
 export interface Entity {
   id:string;
   templateId: string;
@@ -56,6 +62,7 @@ export interface Entity {
   };
   imagePrompt?: string;
   imageBase64?: string;
+  imageCredit?: ImageCredit;
   styles?: {
     borderColor?: string; // e.g., 'cyan-500'
     borderWidth?: 'none' | 'sm' | 'md' | 'lg';
@@ -103,7 +110,9 @@ export interface PlayerChoice {
   description: string; // The main text for this scene/node
   imagePrompt: string;
   imageBase64?: string; // Can be from AI gen (raw base64) or upload (data URL)
+  imageCredit?: ImageCredit;
   foregroundImageBase64?: string; // Will be a data URL from upload
+  foregroundImageCredit?: ImageCredit;
 
   // Combined styles from StoryCard and original PlayerChoice
   styles?: {
@@ -178,6 +187,7 @@ export interface NewsItem {
   content: string; // Markdown content
   imagePrompt?: string;
   imageBase64?: string;
+  imageCredit?: ImageCredit;
   tags?: string[];
   style?: 'normal' | 'urgent' | 'lore';
   status: 'draft' | 'published';
@@ -192,6 +202,7 @@ export interface ShowcaseImage {
   id: string;
   prompt: string;
   base64?: string;
+  credit?: ImageCredit;
 }
 
 export interface GameMenuSettings {
@@ -258,6 +269,7 @@ export interface CompanyLauncherSettings {
   news: NewsItem[];
   backgroundImagePrompt?: string;
   backgroundImageBase64?: string;
+  backgroundImageCredit?: ImageCredit;
   gameListLayout?: GameListLayout;
   gameCardStyle?: Partial<GameCardStyle>;
   gameListStyle?: Partial<GameListStyle>;
@@ -278,6 +290,7 @@ export type EditorFontSize = 'small' | 'medium' | 'large';
 export interface EditorSettings {
   theme: EditorTheme;
   fontSize: EditorFontSize;
+  uiScale: number;
 }
 
 // --- Simulation-specific types ---

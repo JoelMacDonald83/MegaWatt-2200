@@ -39,6 +39,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setSettings({ ...settings, fontSize: fontSize as EditorFontSize });
   };
 
+  const handleUiScaleChange = (scale: number) => {
+    setSettings({ ...settings, uiScale: scale });
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Editor Settings">
         <div className="space-y-6">
@@ -64,6 +68,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     { value: 'large', label: 'Large' },
                 ]}
             />
+             <div>
+                <label htmlFor="ui-scale-slider" className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">
+                    UI Scale: <span className="font-bold text-[var(--text-primary)]">{(settings.uiScale * 100).toFixed(0)}%</span>
+                </label>
+                <input
+                    id="ui-scale-slider"
+                    type="range"
+                    min="0.8"
+                    max="2"
+                    step="0.05"
+                    value={settings.uiScale}
+                    onChange={(e) => handleUiScaleChange(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-[var(--bg-input)] rounded-lg appearance-none cursor-pointer accent-[var(--bg-active)] mt-2"
+                />
+            </div>
         </div>
     </Modal>
   );

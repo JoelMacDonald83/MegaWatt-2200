@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle, ChoiceChunk } from '../types';
+import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle, ChoiceChunk, ImageCredit } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
 import { CubeTransparentIcon } from '../components/icons/CubeTransparentIcon';
 import { RectangleStackIcon } from '../components/icons/RectangleStackIcon';
@@ -76,6 +76,41 @@ const getDescendantIds = (templateId: string, templates: Template[]): string[] =
     return descendantIds;
 };
 
+const ImageCreditEditor: React.FC<{
+  credit?: ImageCredit;
+  onUpdate: (credit: ImageCredit) => void;
+}> = ({ credit, onUpdate }) => {
+  const handleChange = (field: keyof ImageCredit, value: string) => {
+    onUpdate({ ...credit, [field]: value });
+  };
+  return (
+    <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
+       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
+        <input 
+            type="text" 
+            placeholder="Artist Name" 
+            value={credit?.artistName || ''}
+            onChange={(e) => handleChange('artistName', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Source URL (e.g., from Unsplash)" 
+            value={credit?.sourceUrl || ''}
+            onChange={(e) => handleChange('sourceUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Artist Socials/Portfolio URL" 
+            value={credit?.socialsUrl || ''}
+            onChange={(e) => handleChange('socialsUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+    </div>
+  )
+};
+
 const ShowcaseImageEditor: React.FC<{
     images: ShowcaseImage[],
     onUpdate: (images: ShowcaseImage[]) => void,
@@ -85,15 +120,29 @@ const ShowcaseImageEditor: React.FC<{
     onSetCoverImage: (id: string) => void,
 }> = ({ images, onUpdate, onGenerate, isGenerating, cardCoverImageId, onSetCoverImage }) => {
     
-    const handleUpdatePrompt = (id: string, prompt: string) => {
-        onUpdate(images.map(img => img.id === id ? {...img, prompt} : img));
+    const handleUpdateImage = (id: string, updatedImage: Partial<ShowcaseImage>) => {
+        onUpdate(images.map(img => img.id === id ? {...img, ...updatedImage} : img));
     };
 
     const handleGenerateClick = (image: ShowcaseImage) => {
         if (!image.prompt) return;
         onGenerate(image.prompt, (base64) => {
-            onUpdate(images.map(img => img.id === image.id ? {...img, base64: `data:image/jpeg;base64,${base64}`} : img));
+            handleUpdateImage(image.id, { base64: `data:image/jpeg;base64,${base64}` });
         });
+    };
+    
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, imageId: string) => {
+        const file = e.target.files?.[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                if (typeof event.target?.result === 'string') {
+                     handleUpdateImage(imageId, { base64: event.target.result as string });
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+        e.target.value = '';
     };
 
     const handleAddImage = () => {
@@ -125,14 +174,26 @@ const ShowcaseImageEditor: React.FC<{
                         <div className="flex-grow space-y-2">
                              <textarea 
                                 value={image.prompt}
-                                onChange={(e) => handleUpdatePrompt(image.id, e.target.value)}
+                                onChange={(e) => handleUpdateImage(image.id, { prompt: e.target.value })}
                                 placeholder="AI Image Prompt..." 
                                 rows={2} 
                                 className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-sm"
                             />
-                            <button onClick={() => handleGenerateClick(image)} disabled={isGenerating === 'image' || !image.prompt} className="w-full bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel)] text-[var(--text-on-accent)] text-sm font-bold py-2 px-3 rounded-md">
-                                {isGenerating === 'image' ? "Generating..." : "Generate with AI"}
-                            </button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => handleGenerateClick(image)} disabled={isGenerating === 'image' || !image.prompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel)] text-[var(--text-on-accent)] text-sm font-bold py-2 px-3 rounded-md">
+                                    {isGenerating === 'image' ? "Generating..." : "Generate"}
+                                </button>
+                                <label htmlFor={`showcase-upload-${image.id}`} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] flex items-center justify-center text-[var(--text-primary)] text-sm font-bold py-2 px-3 rounded-md cursor-pointer">
+                                    Upload
+                                </label>
+                                <input 
+                                    id={`showcase-upload-${image.id}`}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleFileUpload(e, image.id)}
+                                />
+                            </div>
                         </div>
                         <div className="flex flex-col justify-between items-center">
                              <div className="flex flex-col">
@@ -149,6 +210,10 @@ const ShowcaseImageEditor: React.FC<{
                             <button onClick={() => handleRemoveImage(image.id)} className="p-1"><TrashIcon className="w-4 h-4 text-red-500/80 hover:text-red-400"/></button>
                         </div>
                     </div>
+                    <ImageCreditEditor 
+                        credit={image.credit} 
+                        onUpdate={(credit) => handleUpdateImage(image.id, { credit })} 
+                    />
                 </div>
             ))}
             <button onClick={handleAddImage} className="w-full flex items-center justify-center gap-2 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded transition duration-300">
@@ -991,6 +1056,10 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                         <input type="file" accept="image/*" ref={launcherBgInputRef} onChange={e => handleLauncherBgUpload(e.target.files?.[0] ?? null)} className="hidden"/>
                                         <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>
                                     </div>
+                                    <ImageCreditEditor
+                                        credit={projectData.launcherSettings.backgroundImageCredit}
+                                        onUpdate={(credit) => updateLauncherSettings({ backgroundImageCredit: credit })}
+                                    />
                                 </div>
                             </CollapsibleSection>
                              <CollapsibleSection title="Game List Container">
@@ -1248,6 +1317,18 @@ const NewsEditorModal: React.FC<{item: NewsItem | null; onClose: () => void; onS
             onGenerateImage(newsItem.imagePrompt, (base64) => updateField('imageBase64', `data:image/jpeg;base64,${base64}`));
         }
     };
+    
+    const handleFileUpload = (file: File | null) => {
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (typeof e.target?.result === 'string') {
+                    updateField('imageBase64', e.target.result);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     return (
         <Modal isOpen={true} onClose={onClose} title={item ? "Edit News Item" : "Create News Item"}>
@@ -1288,19 +1369,26 @@ const NewsEditorModal: React.FC<{item: NewsItem | null; onClose: () => void; onS
                     <div className="p-2 border border-[var(--border-secondary)] rounded-md">
                         <h4 className="text-sm font-semibold mb-2 text-[var(--text-secondary)]">Image</h4>
                         <textarea placeholder="AI Image Prompt..." value={newsItem.imagePrompt || ''} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
-                        <button onClick={handleGenerateClick} disabled={isGenerating || !newsItem.imagePrompt} className="mt-2 w-full bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating ? "Generating..." : "Generate with AI"}</button>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                            <button onClick={handleGenerateClick} disabled={isGenerating || !newsItem.imagePrompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating ? "Generating..." : "Generate"}</button>
+                            <label htmlFor="news-image-upload" className="text-center bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md cursor-pointer flex items-center justify-center">Upload</label>
+                            <input id="news-image-upload" type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e.target.files?.[0] ?? null)} />
+                            <button onClick={() => updateField('imageBase64', undefined)} disabled={!newsItem.imageBase64} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md disabled:bg-[var(--bg-panel)] disabled:text-gray-500 disabled:cursor-not-allowed">Clear</button>
+                        </div>
+                        <ImageCreditEditor
+                            credit={newsItem.imageCredit}
+                            onUpdate={(credit) => updateField('imageCredit', credit)}
+                        />
                     </div>
                 </div>
                  <div className="space-y-4">
                     <h3 className="text-lg font-bold text-[var(--text-primary)]">Live Preview</h3>
-                    <div className="bg-[var(--bg-main)] p-4 rounded-lg border border-[var(--border-primary)] h-full overflow-y-auto">
-                        <NewsItemPreview item={newsItem} />
-                    </div>
+                    <NewsItemPreview item={newsItem} />
                 </div>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={onClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save</button>
+                <button onClick={onClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold">Save</button>
             </div>
         </Modal>
     );

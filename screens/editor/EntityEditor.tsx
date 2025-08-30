@@ -1,7 +1,8 @@
 
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Entity, GameData, AttributeDefinition, Template } from '../../types';
+import type { Entity, GameData, AttributeDefinition, Template, ImageCredit } from '../../types';
 import { debugService } from '../../services/debugService';
 import { StyleSelect } from '../../components/editor/StyleComponents';
 import { HelpTooltip } from '../../components/HelpTooltip';
@@ -18,6 +19,41 @@ interface EntityEditorProps {
     isGeneratingImage: boolean;
     isNew: boolean;
 }
+
+const ImageCreditEditor: React.FC<{
+  credit?: ImageCredit;
+  onUpdate: (credit: ImageCredit) => void;
+}> = ({ credit, onUpdate }) => {
+  const handleChange = (field: keyof ImageCredit, value: string) => {
+    onUpdate({ ...credit, [field]: value });
+  };
+  return (
+    <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
+       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
+        <input 
+            type="text" 
+            placeholder="Artist Name" 
+            value={credit?.artistName || ''}
+            onChange={(e) => handleChange('artistName', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Source URL (e.g., from Unsplash)" 
+            value={credit?.sourceUrl || ''}
+            onChange={(e) => handleChange('sourceUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Artist Socials/Portfolio URL" 
+            value={credit?.socialsUrl || ''}
+            onChange={(e) => handleChange('socialsUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+    </div>
+  )
+};
 
 const AttributeInput: React.FC<{
     attribute: AttributeDefinition;
@@ -315,6 +351,10 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
                             <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null)} className="hidden"/>
                             {localEntity.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
                         </div>
+                        <ImageCreditEditor
+                          credit={localEntity.imageCredit}
+                          onUpdate={(credit) => updateField('imageCredit', credit)}
+                        />
                     </div>
                 </CollapsibleSection>
                 

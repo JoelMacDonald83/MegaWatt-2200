@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import type { Entity } from '../../types';
+import { CreditDisplay } from '../CreditDisplay';
 
 interface EntityCardProps {
   entity: Entity;
@@ -40,6 +41,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
           <div className={`absolute inset-0 ${overlayClass}`} />
         </div>
       )}
+      {entity.imageCredit && <CreditDisplay credit={entity.imageCredit} className="bottom-1 right-1" />}
       <div className="relative z-10 p-3 bg-gradient-to-t from-black/80 via-black/50 to-transparent">
         <h3 className={`font-bold text-lg leading-tight ${styles.titleColor}`}>{entity.name}</h3>
       </div>

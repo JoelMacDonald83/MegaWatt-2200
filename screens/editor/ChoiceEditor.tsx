@@ -1,7 +1,8 @@
 
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome, Template } from '../../types';
+import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome, Template, ImageCredit } from '../../types';
 import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
 import { TrashIcon } from '../../components/icons/TrashIcon';
 import { PencilIcon } from '../../components/icons/PencilIcon';
@@ -34,6 +35,40 @@ type EditingOutcomeState =
   | { type: 'dynamic'; outcome: ChoiceOutcome | null; outcomeIndex?: number }
   | null;
 
+const ImageCreditEditor: React.FC<{
+  credit?: ImageCredit;
+  onUpdate: (credit: ImageCredit) => void;
+}> = ({ credit, onUpdate }) => {
+  const handleChange = (field: keyof ImageCredit, value: string) => {
+    onUpdate({ ...credit, [field]: value });
+  };
+  return (
+    <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
+       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
+        <input 
+            type="text" 
+            placeholder="Artist Name" 
+            value={credit?.artistName || ''}
+            onChange={(e) => handleChange('artistName', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Source URL (e.g., from Unsplash)" 
+            value={credit?.sourceUrl || ''}
+            onChange={(e) => handleChange('sourceUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+        <input 
+            type="url" 
+            placeholder="Artist Socials/Portfolio URL" 
+            value={credit?.socialsUrl || ''}
+            onChange={(e) => handleChange('socialsUrl', e.target.value)}
+            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
+        />
+    </div>
+  )
+};
 
 const PlaceholderSelector: React.FC<{
     gameData: GameData;
@@ -533,6 +568,10 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                             <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
                             {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
                         </div>
+                        <ImageCreditEditor
+                            credit={localChoice.imageCredit}
+                            onUpdate={(credit) => updateField('imageCredit', credit)}
+                        />
                     </div>
                 </CollapsibleSection>
                 
@@ -564,16 +603,22 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                         {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
                     </div>
                     {localChoice.foregroundImageBase64 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                             <StyleSelect label="Position" help="The horizontal position of the foreground image." value={styles.fg.position} onChange={e => updateFgStyle('position', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
-                             <StyleSelect label="Size" help="The relative size of the foreground image." value={styles.fg.size} onChange={e => updateFgStyle('size', e.target.value)}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></StyleSelect>
-                             <div></div>
-                             <div className="grid grid-cols-2 gap-2">
-                                <StyleSelect wrapperClassName="col-span-2" label="Animation" help="How the foreground image appears on screen." value={styles.fg.animation} onChange={e => updateFgStyle('animation', e.target.value)}><option value="none">None</option><option value="fade-in">Fade In</option><option value="slide-in-left">Slide-in Left</option><option value="slide-in-right">Slide-in Right</option><option value="zoom-in">Zoom In</option></StyleSelect>
-                                <StyleNumberInput label="Duration (s)" value={styles.fg.animationDuration} onChange={e => updateFgStyle('animationDuration', e.target.valueAsNumber)} />
-                                <StyleNumberInput label="Delay (s)" value={styles.fg.animationDelay} onChange={e => updateFgStyle('animationDelay', e.target.valueAsNumber)} />
-                             </div>
-                        </div>
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                                <StyleSelect label="Position" help="The horizontal position of the foreground image." value={styles.fg.position} onChange={e => updateFgStyle('position', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
+                                <StyleSelect label="Size" help="The relative size of the foreground image." value={styles.fg.size} onChange={e => updateFgStyle('size', e.target.value)}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></StyleSelect>
+                                <div></div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <StyleSelect wrapperClassName="col-span-2" label="Animation" help="How the foreground image appears on screen." value={styles.fg.animation} onChange={e => updateFgStyle('animation', e.target.value)}><option value="none">None</option><option value="fade-in">Fade In</option><option value="slide-in-left">Slide-in Left</option><option value="slide-in-right">Slide-in Right</option><option value="zoom-in">Zoom In</option></StyleSelect>
+                                    <StyleNumberInput label="Duration (s)" value={styles.fg.animationDuration} onChange={e => updateFgStyle('animationDuration', e.target.valueAsNumber)} />
+                                    <StyleNumberInput label="Delay (s)" value={styles.fg.animationDelay} onChange={e => updateFgStyle('animationDelay', e.target.valueAsNumber)} />
+                                </div>
+                            </div>
+                            <ImageCreditEditor
+                                credit={localChoice.foregroundImageCredit}
+                                onUpdate={(credit) => updateField('foregroundImageCredit', credit)}
+                            />
+                        </>
                     )}
                 </CollapsibleSection>
                 

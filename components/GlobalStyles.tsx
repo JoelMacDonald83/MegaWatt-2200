@@ -137,8 +137,10 @@ input:focus-visible,
 textarea:focus-visible, 
 select:focus-visible,
 button:focus-visible {
-  outline: 2px solid var(--border-accent);
-  outline-offset: 2px;
+  outline-style: solid;
+  outline-width: 0.125rem;
+  outline-color: var(--border-accent);
+  outline-offset: 0.125rem;
 }
 
 .focus-ring {

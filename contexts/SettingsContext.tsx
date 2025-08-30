@@ -4,6 +4,7 @@ import { EditorSettings, EditorTheme, EditorFontSize } from '../types';
 const defaultSettings: EditorSettings = {
   theme: 'high-contrast',
   fontSize: 'large',
+  uiScale: 1,
 };
 
 const SettingsContext = createContext<{
@@ -31,12 +32,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       localStorage.setItem('phoenixEditorSettings', JSON.stringify(settings));
       
-      // Update body classes
+      // Update body classes for theme and font presets
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-high-contrast');
       document.body.classList.add(`theme-${settings.theme}`);
 
       document.body.classList.remove('font-size-small', 'font-size-medium', 'font-size-large');
       document.body.classList.add(`font-size-${settings.fontSize}`);
+
+      // Set the root font size to scale all rem units
+      const baseFontSize = 16;
+      document.documentElement.style.fontSize = `${baseFontSize * settings.uiScale}px`;
 
     } catch (error) {
       console.error('Failed to save settings to localStorage', error);
