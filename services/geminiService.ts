@@ -22,6 +22,8 @@ export const generateStoryContent = async (prompt: string): Promise<string> => {
             topP: 0.95,
         }
     });
+    // FIX: The `generateContent` method returns a `GenerateContentResponse` object.
+    // The generated text is accessed via the `.text` property on this object.
     return response.text;
   } catch (error) {
     debugService.log("Gemini API Error (generateStoryContent)", { error });

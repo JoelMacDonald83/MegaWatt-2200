@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit, ImageStyle } from '../types';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit, ImageStyle, Layout, LayoutRegion, GridTrack } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { PlayIcon } from '../components/icons/PlayIcon';
@@ -60,6 +60,13 @@ const parseMarkdown = (text: string): string => {
   return html;
 };
 
+// Converts the structured grid track array into a CSS string
+const gridTracksToString = (tracks?: GridTrack[]): string => {
+    if (!tracks || tracks.length === 0) return 'none';
+    return tracks.map(track => track.unit === 'auto' ? 'auto' : `${track.size}${track.unit}`).join(' ');
+}
+
+
 const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
     const publishedNews = [...(news || [])].filter(n => n.status === 'published').reverse();
 
@@ -117,6 +124,124 @@ const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
             }) : <p className="text-[var(--text-secondary)]">No news items have been posted.</p>}
         </div>
     );
+};
+
+const GameCard: React.FC<{
+    game: GameData;
+    style: Partial<GameCardStyle>;
+    onClick: () => void;
+}> = ({ game, style, onClick }) => {
+    const [imageIndex, setImageIndex] = useState(0);
+    const timeoutRef = useRef<number | null>(null);
+
+    const coverImage = useMemo(() => {
+        const showcase = game.menuSettings.showcaseImages || [];
+        if (showcase.length === 0) return null;
+        if (style.imageDisplay === 'slider') {
+            return showcase[imageIndex];
+        }
+        const cover = showcase.find(img => img.id === game.cardCoverImageId) || showcase[0];
+        return cover;
+    }, [game, style.imageDisplay, imageIndex]);
+
+    useEffect(() => {
+        if (style.imageDisplay !== 'slider') return;
+
+        timeoutRef.current = window.setTimeout(() => {
+            setImageIndex(prev => (prev + 1) % (game.menuSettings.showcaseImages?.length || 1));
+        }, 5000);
+
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, [imageIndex, style.imageDisplay, game.menuSettings.showcaseImages]);
+
+    const parseText = (text: string | undefined) => {
+        if (!text) return '';
+        return text.replace(/{game.gameTitle}/g, game.gameTitle).replace(/{game.colonyName}/g, game.colonyName);
+    }
+    
+    const hoverClasses = {
+        'lift': 'hover:scale-105 hover:shadow-2xl hover:ring-2 hover:ring-[var(--border-accent)]',
+        'glow': 'hover:shadow-2xl',
+        'none': ''
+    }[style.hoverEffect || 'lift'];
+
+    return (
+        <div 
+            className={`rounded-lg overflow-hidden flex flex-col transition-all duration-300 ${hoverClasses}`}
+            style={{ backgroundColor: style.backgroundColor, borderColor: style.borderColor, borderWidth: '1px' }}
+        >
+            <div className="relative" style={{ aspectRatio: style.imageAspectRatio }}>
+                 {coverImage?.src ? <img src={coverImage.src} alt={game.gameTitle} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[var(--bg-main)]/50" />}
+            </div>
+            <div className="p-4 flex-grow flex flex-col">
+                <h3 style={style.headerStyle}>{parseText(style.headerText)}</h3>
+                <p style={style.bodyStyle}>{parseText(style.bodyText)}</p>
+                <button 
+                    onClick={onClick}
+                    style={{ backgroundColor: style.buttonColor, color: style.buttonTextColor }}
+                    className="mt-auto ml-auto px-4 py-2 rounded-md font-bold text-sm"
+                >
+                    Play
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export const MegaWattGame: React.FC<{ projectData: PhoenixProject, onStartSimulation: (game: GameData) => void, onChoiceMade: (outcomes: ChoiceOutcome[]) => void }> = ({ projectData, onStartSimulation }) => {
+    const { launcherSettings, games } = projectData;
+    const [selectedGameId, setSelectedGameId] = useState<string | null>(games[0]?.id || null);
+    const [mainView, setMainView] = useState<'games' | 'news' | 'credits'>('games');
+    
+    const selectedGame = useMemo(() => games.find(g => g.id === selectedGameId), [games, selectedGameId]);
+
+    const listStyle = launcherSettings.gameListStyle || {};
+    const cardStyle = launcherSettings.gameCardStyle || {};
+    
+    let bgStyle: React.CSSProperties = {};
+    if (listStyle.backgroundType === 'solid' && listStyle.backgroundColor1) {
+        bgStyle.backgroundColor = listStyle.backgroundColor1;
+    } else if (listStyle.backgroundType === 'gradient' && listStyle.backgroundColor1 && listStyle.backgroundColor2) {
+        bgStyle.backgroundImage = `linear-gradient(to bottom right, ${listStyle.backgroundColor1}, ${listStyle.backgroundColor2})`;
+    }
+
+    return (
+        <div className="h-full w-full flex flex-col relative" style={imageStyleToCss(launcherSettings.backgroundImageStyle)}>
+            {launcherSettings.src && <img src={launcherSettings.src} alt="background" className="absolute inset-0 w-full h-full object-cover" />}
+            <div className="absolute inset-0 bg-black/50" />
+            
+            <div className="relative z-10 flex-grow p-8 flex flex-col">
+                <header className="flex justify-between items-center mb-8">
+                    <h1 className="text-3xl font-bold text-white">{launcherSettings.companyName}</h1>
+                     <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+                        <button onClick={() => setMainView('games')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mainView === 'games' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>Games</button>
+                        <button onClick={() => setMainView('news')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mainView === 'news' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>News</button>
+                        <button onClick={() => setMainView('credits')} className={`px-3 py-1 text-sm rounded-md transition-colors ${mainView === 'credits' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>Credits</button>
+                    </div>
+                </header>
+                
+                <main className="flex-grow overflow-y-auto">
+                    {mainView === 'games' && (
+                        <div style={{ ...bgStyle, padding: `${listStyle.padding || 0}px`, borderRadius: `${listStyle.borderRadius || 0}px` }}>
+                            <div className={`grid gap-6 ${launcherSettings.gameListLayout === 'list' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
+                                {games.map(game => (
+                                    <GameCard key={game.id} game={game} style={cardStyle} onClick={() => onStartSimulation(game)} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {mainView === 'news' && <NewsDisplay news={launcherSettings.news} />}
+                    {mainView === 'credits' && (
+                        <div className="max-w-3xl prose prose-invert">
+                            <div dangerouslySetInnerHTML={{ __html: parseMarkdown(selectedGame?.menuSettings.credits || '')}} />
+                        </div>
+                    )}
+                </main>
+            </div>
+        </div>
+    )
 };
 
 
@@ -302,392 +427,56 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
             {choice.foregroundImageSrc && 
                 <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}>
                     <div className={`relative ${fgSizeClass}`}>
-                         <img src={choice.foregroundImageSrc} style={fgStyle} className={`object-contain max-h-full w-full ${fgAnimationClass}`} alt="Foreground Element"/>
-                         {choice.foregroundImageCredit && <CreditDisplay credit={choice.foregroundImageCredit} className="top-0 right-0" />}
+                         <img src={choice.foregroundImageSrc} style={fgStyle} className={`object-contain max-h-full w-full ${fgAnimationClass}`} alt="" />
                     </div>
                 </div>
             }
             <div className={`relative z-10 flex flex-col h-full p-8 md:p-16 ${positionClass} ${textAlignClass}`}>
-                <div className={`w-full ${textWidthClass}`}>
-                    <p style={textStyle} className={`leading-relaxed mb-12 ${styles.textColor} [text-shadow:0_2px_10px_rgba(0,0,0,0.5)] ${fontFamilyClass} ${fontSizeClass} ${textAnimationClass}`}>{choice.description}</p>
-                    {choice.prompt ? (
-                        <div className="space-y-6">
-                            <p className={`transition-colors duration-300 ${promptFontSizeClass} ${styles.prompt.textColor}`}>{choice.prompt}</p>
-                            {styles.choiceLayout === 'buttons' ? (
-                                <div className="flex justify-center flex-wrap gap-4">
-                                    {choiceOptions.map(option => (<button key={option.id} onClick={() => onComplete(option)} className="bg-[var(--bg-panel)]/60 hover:bg-[var(--text-accent)]/80 border border-[var(--border-secondary)] hover:border-[var(--border-accent)] text-[var(--text-primary)] font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">{option.text}</button>))}
-                                </div>
-                            ) : (
-                                <div className="flex justify-center flex-wrap gap-6">
+                <div className={`space-y-6 ${textWidthClass}`} style={textStyle}>
+                    <p className={`${styles.textColor} ${fontFamilyClass} ${fontSizeClass} [text-shadow:0_2px_8px_rgba(0,0,0,0.8)] ${textAnimationClass}`} dangerouslySetInnerHTML={{ __html: parseMarkdown(choice.description) }} />
+
+                    {choice.prompt && (
+                        <div className="pt-4">
+                            <p className={`${styles.prompt.textColor} ${promptFontSizeClass} font-semibold mb-6 [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]`}>{choice.prompt}</p>
+                            
+                            {styles.choiceLayout === 'buttons' && (
+                                <div className="flex flex-wrap gap-4" style={{ justifyContent: { left: 'flex-start', center: 'center', right: 'flex-end' }[styles.textAlign] }}>
                                     {choiceOptions.map(option => (
-                                        <ChoiceEntityCard
-                                            key={option.id}
-                                            option={option}
-                                            gameData={gameData}
-                                            onClick={() => onComplete(option)}
-                                        />
+                                        <button key={option.id} onClick={() => onComplete(option)} className="bg-[var(--bg-panel)]/60 hover:bg-[var(--text-accent)]/80 border border-[var(--border-secondary)] hover:border-[var(--border-accent)] text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">
+                                            {option.text}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {styles.choiceLayout === 'grid' && (
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                    {choiceOptions.map(option => (
+                                        <ChoiceEntityCard key={option.id} option={option} gameData={gameData} onClick={() => onComplete(option)} />
+                                    ))}
+                                </div>
+                            )}
+
+                             {styles.choiceLayout === 'carousel' && (
+                                <div className="flex items-center justify-center gap-4">
+                                    {/* Carousel implementation would go here. For now, a grid is a good fallback. */}
+                                    {choiceOptions.map(option => (
+                                         <ChoiceEntityCard key={option.id} option={option} gameData={gameData} onClick={() => onComplete(option)} />
                                     ))}
                                 </div>
                             )}
                         </div>
-                    ) : ( <button onClick={() => onComplete()} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-12 rounded-full transition-all duration-300 transform hover:scale-105 text-lg">Continue</button> )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- GAME LAUNCHER COMPONENT ---
-
-const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: () => void}> = ({ gameData, onPlay, onBack }) => {
-    const [activeMenu, setActiveMenu] = useState<'main' | 'news' | 'credits'>('main');
-    const { menuSettings } = gameData;
-    const bgImage = menuSettings.showcaseImages?.[0];
-
-    const MenuButton: React.FC<{ section: any; icon: React.ReactNode; label: string; }> = ({ section, icon, label }) => (
-        <button onClick={() => setActiveMenu(section)} className={`flex items-center gap-3 w-full p-3 text-left rounded-md transition-colors text-[length:var(--font-size-sm)] ${activeMenu === section ? 'bg-[var(--text-accent)]/20 text-[var(--text-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}>
-            {icon}
-            <span>{label}</span>
-        </button>
-    );
-
-    return (
-        <div className="relative min-h-screen bg-black text-white flex">
-            {bgImage?.src && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage.src})`, animationDuration: '45s', ...imageStyleToCss(bgImage.style) }} />}
-            {bgImage?.credit && <CreditDisplay credit={bgImage.credit} className="bottom-2 right-2" />}
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            
-            <aside className="relative z-10 w-64 bg-[var(--bg-panel)]/30 p-4 flex flex-col space-y-2 border-r border-[var(--border-primary)]/50">
-                <h1 className="text-2xl font-bold text-[var(--text-accent-bright)] tracking-wider px-2 py-4 text-center">{gameData.gameTitle}</h1>
-                <MenuButton section="main" icon={<PlayIcon className="w-5 h-5" />} label="Play" />
-                <MenuButton section="news" icon={<NewspaperIcon className="w-5 h-5" />} label="News & Updates" />
-                <MenuButton section="credits" icon={<UserCircleIcon className="w-5 h-5" />} label="Credits" />
-                <div className="!mt-auto">
-                    <button onClick={onBack} className="flex items-center gap-3 w-full p-3 text-left rounded-md transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] text-[length:var(--font-size-sm)]">
-                        <ArrowLeftIcon className="w-5 h-5" />
-                        <span>Back to Launcher</span>
-                    </button>
-                </div>
-            </aside>
-
-            <main className="relative z-10 flex-1 p-8 overflow-y-auto">
-                {activeMenu === 'main' && (
-                     <div className="text-center max-w-4xl mx-auto flex flex-col items-center h-full justify-center">
-                        <h2 className="text-5xl font-extrabold text-white tracking-wider mb-4">{gameData.colonyName}</h2>
-                        <div className="flex flex-wrap justify-center gap-2 mb-6">
-                            {menuSettings.tags.map(tag => <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-accent)] text-sm font-medium px-3 py-1 rounded-full">{tag}</span>)}
+                    )}
+                    
+                    {!choice.prompt && (
+                        <div className="pt-4" style={{ textAlign: styles.textAlign }}>
+                            <button onClick={() => onComplete()} className="bg-[var(--bg-panel)]/60 hover:bg-[var(--text-accent)]/80 border border-[var(--border-secondary)] hover:border-[var(--border-accent)] text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">
+                                Continue
+                            </button>
                         </div>
-                        <p className="text-lg text-[var(--text-primary)] leading-relaxed my-4 whitespace-pre-wrap">{menuSettings.description}</p>
-                        <button onClick={onPlay} className="mt-8 bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-4 px-16 rounded-full transition-all duration-300 transform hover:scale-105 text-xl tracking-wider shadow-lg shadow-cyan-500/20">
-                            Start Simulation
-                        </button>
-                    </div>
-                )}
-                {activeMenu === 'news' && (
-                    <div>
-                        <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">News & Updates</h2>
-                        <NewsDisplay news={menuSettings.news} />
-                    </div>
-                )}
-                {activeMenu === 'credits' && (
-                    <div>
-                        <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">Credits</h2>
-                        <div className="max-w-3xl bg-[var(--bg-panel)]/50 p-6 rounded-lg"><p className="text-[var(--text-primary)] whitespace-pre-wrap">{menuSettings.credits}</p></div>
-                    </div>
-                )}
-            </main>
-        </div>
-    );
-};
-
-
-// --- COMPANY LAUNCHER COMPONENTS ---
-
-const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-
-    const goToPrevious = () => {
-        const isFirstSlide = currentIndex === 0;
-        const newIndex = isFirstSlide ? images.length - 1 : currentIndex - 1;
-        setCurrentIndex(newIndex);
-    };
-
-    const goToNext = () => {
-        const isLastSlide = currentIndex === images.length - 1;
-        const newIndex = isLastSlide ? 0 : currentIndex + 1;
-        setCurrentIndex(newIndex);
-    };
-
-    if (!images || images.length === 0) {
-        return <div className="w-full h-full bg-black/50 flex items-center justify-center text-[var(--text-secondary)]">No Images</div>;
-    }
-
-    return (
-        <div className="w-full h-full relative group/slider">
-            <div className="w-full h-full overflow-hidden">
-                <div className="whitespace-nowrap transition-transform duration-500 ease-in-out" style={{ transform: `translateX(${-currentIndex * 100}%)` }}>
-                    {images.map((image, index) => (
-                        <div key={image.id} className="inline-block w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${image.src})`, ...imageStyleToCss(image.style) }} />
-                    ))}
+                    )}
                 </div>
             </div>
-            {images.length > 1 && (
-                <>
-                    <button onClick={goToPrevious} className="absolute top-1/2 left-2 -translate-y-1/2 bg-black/40 hover:bg-black/70 p-1 rounded-full opacity-0 group-hover/slider:opacity-100 transition-opacity">
-                        <ChevronLeftIcon className="w-5 h-5" />
-                    </button>
-                    <button onClick={goToNext} className="absolute top-1/2 right-2 -translate-y-1/2 bg-black/40 hover:bg-black/70 p-1 rounded-full opacity-0 group-hover/slider:opacity-100 transition-opacity">
-                        <ChevronRightIcon className="w-5 h-5" />
-                    </button>
-                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
-                        {images.map((_, index) => (
-                            <div key={index} onClick={() => setCurrentIndex(index)} className={`w-2 h-2 rounded-full cursor-pointer transition-colors ${currentIndex === index ? 'bg-white' : 'bg-white/40 hover:bg-white/70'}`} />
-                        ))}
-                    </div>
-                </>
-            )}
         </div>
     );
 };
-
-const parseCardText = (text: string, game: GameData): string => {
-    if (!text) return '';
-    return text
-        .replace(/{game.gameTitle}/g, game.gameTitle)
-        .replace(/{game.colonyName}/g, game.colonyName);
-};
-
-const textStyleToCss = (style: TextStyle): React.CSSProperties => {
-    const fontSizes: Record<TextStyle['fontSize'], string> = {
-        'xs': '0.75rem',
-        'sm': '0.875rem',
-        'base': '1rem',
-        'lg': '1.125rem',
-        'xl': '1.25rem'
-    };
-    return {
-        color: style.color,
-        fontSize: fontSizes[style.fontSize],
-        textAlign: style.textAlign,
-    };
-};
-
-const GamePreviewCard: React.FC<{
-    game: GameData;
-    layout: 'grid' | 'list';
-    cardStyle: GameCardStyle;
-    onSelectGame: (gameId: string) => void;
-}> = ({ game, layout, cardStyle, onSelectGame }) => {
-
-    const hoverClasses = {
-        lift: 'group transition-all duration-300 ring-1 ring-transparent hover:ring-[var(--border-accent)] hover:shadow-lg hover:shadow-[var(--text-accent)]/20',
-        glow: 'transition-shadow duration-300 hover:shadow-lg hover:shadow-[var(--text-accent)]/20',
-        none: '',
-    }[cardStyle.hoverEffect];
-
-    const aspectRatioClass = {
-        '16/9': 'aspect-[16/9]',
-        '4/3': 'aspect-[4/3]',
-        '1/1': 'aspect-square',
-        'auto': 'h-48'
-    }[cardStyle.imageAspectRatio];
-    
-    const cardDynamicStyle: React.CSSProperties = {
-        backgroundColor: cardStyle.backgroundColor,
-        borderColor: cardStyle.borderColor,
-        borderWidth: cardStyle.borderColor ? '1px' : '0',
-        borderStyle: 'solid',
-    };
-
-    const coverImage = useMemo(() => {
-        const images = game.menuSettings.showcaseImages || [];
-        return images.find(img => img.id === game.cardCoverImageId) || images[0];
-    }, [game.cardCoverImageId, game.menuSettings.showcaseImages]);
-
-    const imageContent = cardStyle.imageDisplay === 'slider' && game.menuSettings.showcaseImages?.length > 0 ? (
-        <ImageSlider images={game.menuSettings.showcaseImages} />
-    ) : (
-        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: coverImage?.src ? `url(${coverImage.src})` : 'none', backgroundColor: '#111', ...imageStyleToCss(coverImage?.style) }} />
-    );
-
-    if (layout === 'grid') {
-        return (
-            <div className={`rounded-lg overflow-hidden flex flex-col ${hoverClasses}`} style={cardDynamicStyle}>
-                <div className={`relative ${aspectRatioClass}`}>
-                    {imageContent}
-                    {coverImage?.credit && <CreditDisplay credit={coverImage.credit} className="bottom-1 right-1" />}
-                </div>
-                <div className="p-4 flex flex-col flex-grow">
-                    <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
-                    <p className="mt-1" style={textStyleToCss(cardStyle.bodyStyle)}>{parseCardText(cardStyle.bodyText, game)}</p>
-                    <button onClick={() => onSelectGame(game.id)} className="w-full mt-auto font-bold py-2 px-4 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
-                        Launch
-                    </button>
-                </div>
-            </div>
-        );
-    }
-    
-    // List Layout
-    return (
-         <div className={`rounded-lg overflow-hidden flex items-center ${hoverClasses}`} style={cardDynamicStyle}>
-            <div className={`relative w-1/3 flex-shrink-0 ${aspectRatioClass}`}>
-                {imageContent}
-                {coverImage?.credit && <CreditDisplay credit={coverImage.credit} className="bottom-1 right-1" />}
-            </div>
-            <div className="p-4 flex flex-col flex-grow">
-                 <h2 style={textStyleToCss(cardStyle.headerStyle)}>{parseCardText(cardStyle.headerText, game)}</h2>
-                 <p className="mt-1" style={textStyleToCss(cardStyle.bodyStyle)}>{parseCardText(cardStyle.bodyText, game)}</p>
-            </div>
-             <div className="p-4 flex-shrink-0">
-                <button onClick={() => onSelectGame(game.id)} className="font-bold py-2 px-8 rounded-md transition-all duration-300 transform group-hover:scale-105 hover:opacity-90" style={{ backgroundColor: cardStyle.buttonColor, color: cardStyle.buttonTextColor }}>
-                    Launch
-                </button>
-            </div>
-        </div>
-    );
-};
-
-const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameData[], onSelectGame: (gameId: string) => void}> = ({ settings, games, onSelectGame }) => {
-    const layout = settings.gameListLayout || 'grid';
-    const cardStyle = useMemo((): GameCardStyle => ({
-      imageAspectRatio: '16/9',
-      imageDisplay: 'single',
-      hoverEffect: 'lift',
-      backgroundColor: '#1f293780',
-      borderColor: '#4b5563',
-      headerText: '{game.gameTitle}',
-      headerStyle: { color: '#ffffff', fontSize: 'lg', textAlign: 'left' },
-      bodyText: '{game.colonyName}',
-      bodyStyle: { color: '#9ca3af', fontSize: 'sm', textAlign: 'left' },
-      buttonColor: '#22d3ee',
-      buttonTextColor: '#111827',
-      ...(settings.gameCardStyle || {}),
-    }), [settings.gameCardStyle]);
-    
-    const listStyle = useMemo((): GameListStyle => ({
-      backgroundType: 'transparent',
-      backgroundColor1: '#00000000',
-      backgroundColor2: '#00000000',
-      padding: 0,
-      borderRadius: 0,
-      ...(settings.gameListStyle || {}),
-    }), [settings.gameListStyle]);
-
-    const gridContainerClasses = layout === 'grid' 
-        ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
-        : "flex flex-col gap-4";
-        
-    const containerDynamicStyle: React.CSSProperties = {
-        padding: `${listStyle.padding}px`,
-        borderRadius: `${listStyle.borderRadius}px`,
-    };
-
-    if (listStyle.backgroundType === 'solid') {
-        containerDynamicStyle.backgroundColor = listStyle.backgroundColor1;
-    } else if (listStyle.backgroundType === 'gradient' && listStyle.backgroundColor1 && listStyle.backgroundColor2) {
-        containerDynamicStyle.backgroundImage = `linear-gradient(to bottom, ${listStyle.backgroundColor1}, ${listStyle.backgroundColor2})`;
-    }
-
-    return (
-        <div className="relative min-h-screen bg-black text-white flex flex-col">
-            {settings.src && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${settings.src})`, ...imageStyleToCss(settings.backgroundImageStyle) }} />}
-            {settings.backgroundImageCredit && <CreditDisplay credit={settings.backgroundImageCredit} className="bottom-2 right-2" />}
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-
-            <header className="relative z-10 p-4 text-center border-b border-[var(--border-primary)]/50">
-                <h1 className="text-3xl font-bold text-[var(--text-accent-bright)] tracking-widest">{settings.companyName}</h1>
-            </header>
-            
-            <div className="relative z-10 flex-1 flex">
-                <main className="flex-1 p-8 overflow-y-auto">
-                    <div className={gridContainerClasses} style={containerDynamicStyle}>
-                        {games.map(game => (
-                           <GamePreviewCard 
-                             key={game.id}
-                             game={game}
-                             layout={layout}
-                             cardStyle={cardStyle}
-                             onSelectGame={onSelectGame}
-                           />
-                        ))}
-                    </div>
-                </main>
-
-                <aside className="w-96 bg-[var(--bg-panel)]/30 p-6 border-l border-[var(--border-primary)]/50 overflow-y-auto flex-shrink-0">
-                    <h2 className="text-2xl font-bold text-[var(--text-accent-bright)] mb-6">Company News</h2>
-                    <NewsDisplay news={settings.news} />
-                </aside>
-            </div>
-        </div>
-    );
-};
-
-
-// --- MAIN FLOW CONTROLLER ---
-
-type LauncherFlowView = 'company_launcher' | 'game_launcher';
-
-interface LauncherFlowProps {
-  projectData: PhoenixProject;
-  onChoiceMade: (gameId: string, outcomes: ChoiceOutcome[]) => void;
-  onStartSimulation?: (game: GameData) => void;
-}
-
-export const MegaWattGame: React.FC<LauncherFlowProps> = ({ projectData, onStartSimulation }) => {
-    const [currentView, setCurrentView] = useState<LauncherFlowView>('company_launcher');
-    const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
-
-    const selectedGame = useMemo(() => {
-        if (!selectedGameId) return null;
-        return projectData.games.find(g => g.id === selectedGameId) || null;
-    }, [selectedGameId, projectData.games]);
-
-    const handleSelectGame = (gameId: string) => {
-        setSelectedGameId(gameId);
-        setCurrentView('game_launcher');
-    };
-    
-    const handleBackToCompanyLauncher = () => {
-        setSelectedGameId(null);
-        setCurrentView('company_launcher');
-    };
-
-    const handlePlay = () => {
-        if (selectedGame && onStartSimulation) {
-            onStartSimulation(selectedGame);
-        }
-    }
-
-    switch (currentView) {
-        case 'game_launcher':
-            if (selectedGame) return <GameLauncher gameData={selectedGame} onPlay={handlePlay} onBack={handleBackToCompanyLauncher} />;
-            setCurrentView('company_launcher'); return null; // Fallback
-        case 'company_launcher':
-        default:
-            return <CompanyLauncher settings={projectData.launcherSettings} games={projectData.games} onSelectGame={handleSelectGame} />;
-    }
-};
-
-// --- GLOBAL STYLES ---
-
-const style = document.createElement('style');
-style.innerHTML = `
-.bg-grid { background-image: linear-gradient(var(--grid-bg-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-bg-color) 1px, transparent 1px); background-size: 2rem 2rem; }
-.prose-invert a { color: var(--text-accent); } .prose-invert a:hover { color: var(--text-accent-bright); } .prose-invert strong { color: var(--text-primary); } .prose-invert em { color: var(--text-primary); } .prose-invert ul > li::before { background-color: var(--text-secondary); }
-/* Background Animations */
-@keyframes kenburns-normal { 0% { transform: scale(1.0) translate(0, 0); } 100% { transform: scale(1.1) translate(-1%, 2%); } }
-@keyframes kenburns-subtle { 0% { transform: scale(1.0) translate(0, 0); } 100% { transform: scale(1.03) translate(0, 0); } }
-.anim-bg-kenburns-normal { animation: kenburns-normal ease-out forwards; } .anim-bg-kenburns-subtle { animation: kenburns-subtle ease-out forwards; }
-/* Text Animations */
-@keyframes text-fade-in { 0% { opacity: 0; } 100% { opacity: 1; } } @keyframes text-rise-up { 0% { opacity: 0; transform: translateY(30px); } 100% { opacity: 1; transform: translateY(0); } }
-.text-anim-fade-in { animation-name: text-fade-in; animation-timing-function: ease-in-out; animation-fill-mode: forwards; opacity: 0; }
-.text-anim-rise-up { animation-name: text-rise-up; animation-timing-function: ease-out; animation-fill-mode: forwards; opacity: 0; }
-/* Card Transitions */
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } } @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
-.card-transition-fade-in { animation: fade-in ease-in forwards; } .card-transition-fade-out { animation: fade-out ease-out forwards; }
-@keyframes slide-left-in { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes slide-left-out { from { transform: translateX(0); } to { transform: translateX(-100%); } }
-.card-transition-slide-left-in { animation: slide-left-in ease-out forwards; } .card-transition-slide-left-out { animation: slide-left-out ease-in forwards; }
-/* Add other animation keyframes and classes as needed */
-`;
-document.head.appendChild(style);

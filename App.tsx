@@ -370,7 +370,9 @@ const initialProject: PhoenixProject = {
         borderRadius: 0,
     }
   },
-  games: [initialGameData]
+  games: [initialGameData],
+  layouts: [],
+  componentLayouts: [],
 };
 
 
@@ -666,6 +668,7 @@ const AppContent: React.FC = () => {
         return <MegaWattGame projectData={projectData} onStartSimulation={handleStartSimulation} onChoiceMade={() => {}} />;
       case 'simulation':
         if (simulationProject) {
+          // FIX: Removed unused 'projectData' prop from SimulationScreen call.
           return <SimulationScreen gameData={simulationProject} onChoiceMade={handleChoiceOutcomes} />;
         }
         setViewMode('editor');

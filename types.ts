@@ -100,7 +100,8 @@ export interface Entity {
     titleColor?: string; // e.g., 'text-cyan-300'
     backgroundColor?: string; // e.g., 'bg-gray-800/50'
     backgroundOverlayStrength?: 'none' | 'light' | 'medium' | 'heavy';
-  }
+  };
+  componentLayoutId?: string;
 }
 
 export interface ChoiceOutcomeCreateEntity {
@@ -202,6 +203,7 @@ export interface PlayerChoice {
       filterConditions?: Condition[];
   };
   nextChoiceId?: string | null; // If no prompt/options, this is used to continue
+  componentLayoutId?: string;
 }
 
 export interface ChoiceChunk {
@@ -229,6 +231,7 @@ export interface NewsItem {
     text: string;
     url: string;
   };
+  componentLayoutId?: string;
 }
 
 export interface ShowcaseImage {
@@ -245,6 +248,84 @@ export interface GameMenuSettings {
   showcaseImages: ShowcaseImage[];
   news: NewsItem[];
   credits: string;
+  menuLayoutId?: string;
+}
+
+export interface LayoutRegionStyle {
+  backgroundColor?: string;
+  padding?: number;
+  borderRadius?: number;
+  justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around';
+  alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch';
+  flexDirection?: 'row' | 'column';
+  gap?: number;
+}
+
+export type GameMenuContentComponent = 'title' | 'description' | 'tags' | 'play_button' | 'menu_buttons' | 'news' | 'credits';
+
+export interface LayoutRegion {
+  id: string;
+  name: string;
+  gridArea: string;
+  style: LayoutRegionStyle;
+  contains: GameMenuContentComponent[];
+}
+
+export interface GridTrack {
+  size: number;
+  unit: 'fr' | 'px' | '%' | 'auto';
+}
+
+export interface Layout {
+  id: string;
+  name: string;
+  backgroundColor?: string;
+  backgroundImageSrc?: string;
+  backgroundImageCredit?: ImageCredit;
+  backgroundImageStyle?: ImageStyle;
+  overlayColor?: string;
+  gridColumns?: GridTrack[];
+  gridRows?: GridTrack[];
+  gridTemplateAreas?: string;
+  gap?: number;
+  regions: LayoutRegion[];
+}
+
+// --- Component Layout System ---
+export type TargetComponentType = 'entity_card' | 'action_card' | 'news_item';
+
+export interface ComponentLayoutSlotStyle {
+  // Container properties
+  backgroundColor?: string;
+  padding?: number;
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
+
+  // Flexbox properties
+  justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between';
+  alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch';
+  flexDirection?: 'row' | 'column';
+  gap?: number;
+
+  // Text properties
+  color?: string;
+  fontSize?: 'xs' | 'sm' | 'base' | 'lg' | 'xl';
+  textAlign?: 'left' | 'center' | 'right';
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold';
+
+  // Sizing
+  width?: string;
+  height?: string;
+}
+
+export interface ComponentLayout {
+    id: string;
+    name: string;
+    targetComponent: TargetComponentType;
+    slots: {
+        [slotName: string]: ComponentLayoutSlotStyle;
+    };
 }
 
 // Represents a single game project
@@ -314,6 +395,8 @@ export interface CompanyLauncherSettings {
 export interface PhoenixProject {
   launcherSettings: CompanyLauncherSettings;
   games: GameData[];
+  layouts: Layout[];
+  componentLayouts: ComponentLayout[];
 }
 
 

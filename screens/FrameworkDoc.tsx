@@ -26,6 +26,48 @@ export const FrameworkDoc: React.FC = () => {
             <h1 className="text-4xl font-extrabold text-[var(--text-accent)] mb-2">Phoenix Engine Framework</h1>
             <p className="text-lg text-[var(--text-secondary)] mb-8">A guide to understanding and modifying this world-building tool.</p>
 
+             <CollapsibleSection title="Changelog">
+                <DocSubHeader>Update: Component Layouts</DocSubHeader>
+                <Info>
+                    This update introduces a major new feature: the <strong>Component Layout Editor</strong>. This system allows for detailed visual customization of individual game components, giving you much finer control over the look and feel of your game.
+                </Info>
+                <CollapsibleSection title="What's New?">
+                    <ul className="list-disc list-inside space-y-3 mb-4 pl-4">
+                        <li><strong>Two Layout Modes:</strong> The "Layouts" tab in the editor is now split into two modes: "Screens" (the previous system for full-screen game menus) and "Components" (the new system for styling individual elements).</li>
+                        <li><strong>Dedicated Component Editor:</strong> Creating or editing a component layout opens a new visual editor. It features a live preview of the component (e.g., an Entity Card) and granular styling options for its various parts (container, title, image, etc.).</li>
+                        <li><strong>Layout Assignment:</strong> In the Entity, Scene, and News editors, you can now find a "Component Layout" dropdown. This lets you apply one of your custom designs to that specific piece of content.</li>
+                    </ul>
+                </CollapsibleSection>
+                 <CollapsibleSection title="How It Works: Screen vs. Component Layouts">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-[var(--bg-panel)] p-4 rounded-lg">
+                            <h4 className="font-bold text-lg">Screen Layouts</h4>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                                These use <strong>CSS Grid</strong> to define the overall structure of a full page, like the game's main menu. You define rows, columns, and areas, and then place large content blocks (like 'News Feed' or 'Game Title') into those areas.
+                            </p>
+                        </div>
+                         <div className="bg-[var(--bg-panel)] p-4 rounded-lg">
+                            <h4 className="font-bold text-lg">Component Layouts</h4>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                                These use <strong>Flexbox</strong> to style a single, self-contained component. Instead of a grid, you style "slots" within that component. For an Entity Card, the slots might be 'Container', 'Image', and 'Title'. This allows you to create different visual variations of the same type of card.
+                            </p>
+                        </div>
+                    </div>
+                </CollapsibleSection>
+                <CollapsibleSection title="Quick Start Guide">
+                    <ol className="list-decimal list-inside space-y-3 pl-4">
+                        <li>Go to the <strong>Layouts</strong> tab in the main editor.</li>
+                        <li>Switch to the <strong>Component</strong> mode using the toggle at the top of the list panel.</li>
+                        <li>Click "New Component Layout".</li>
+                        <li>Give your layout a name and select the <strong>Target Component</strong> (e.g., 'Entity Card').</li>
+                        <li>Use the styling options on the right to customize the look of the live preview.</li>
+                        <li>Save the layout.</li>
+                        <li>Go to the <strong>Entities</strong> tab, edit an entity, and select your new layout from the "Component Layout" dropdown under the "Styling" section.</li>
+                        <li>Start a simulation to see your custom-styled card in action!</li>
+                    </ol>
+                </CollapsibleSection>
+            </CollapsibleSection>
+
             <CollapsibleSection title="High-Level View: What is This Program?" defaultOpen>
                 <Info>
                     The Phoenix Engine is a powerful tool designed for creating and playing narrative-driven games. It's split into two main parts: the <strong>Phoenix Editor</strong> (what you're using now) and the <strong>MegaWatt Game</strong> (the player).
