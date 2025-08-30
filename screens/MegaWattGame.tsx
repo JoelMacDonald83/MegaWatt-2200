@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
@@ -49,8 +50,8 @@ const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
             {publishedNews.length > 0 ? publishedNews.map(item => {
                 const styleClasses = {
                     normal: { container: 'border-transparent', title: 'text-[var(--text-accent)]' },
-                    urgent: { container: 'border-red-500/50', title: 'text-red-400' },
-                    lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-yellow-400' }
+                    urgent: { container: 'border-red-500/50', title: 'text-[var(--text-danger)]' },
+                    lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-[var(--text-warning)]' }
                 }[item.style || 'normal'];
                 
                 const layoutClasses = {
@@ -81,7 +82,7 @@ const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
                                             ))}
                                         </div>
                                     )}
-                                    <div className="text-gray-300 prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
+                                    <div className="prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
                                     
                                     {item.cta && item.cta.text && item.cta.url && (
                                         <div className="mt-4">
@@ -131,7 +132,7 @@ const ChoiceEntityCard: React.FC<{
     if (!entity) {
         // Fallback to a button if entity not found or for static options in a card layout
         return (
-            <button onClick={onClick} className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">
+            <button onClick={onClick} className="bg-[var(--bg-panel)]/60 hover:bg-[var(--text-accent)]/80 border border-[var(--border-secondary)] hover:border-[var(--border-accent)] text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">
                 {option.text}
             </button>
         );
@@ -288,7 +289,7 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
                             <p className={`transition-colors duration-300 ${promptFontSizeClass} ${styles.prompt.textColor}`}>{choice.prompt}</p>
                             {styles.choiceLayout === 'buttons' ? (
                                 <div className="flex justify-center flex-wrap gap-4">
-                                    {choiceOptions.map(option => (<button key={option.id} onClick={() => onComplete(option)} className="bg-gray-800/60 hover:bg-cyan-600/80 border border-gray-600 hover:border-cyan-400 text-white font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">{option.text}</button>))}
+                                    {choiceOptions.map(option => (<button key={option.id} onClick={() => onComplete(option)} className="bg-[var(--bg-panel)]/60 hover:bg-[var(--text-accent)]/80 border border-[var(--border-secondary)] hover:border-[var(--border-accent)] text-[var(--text-primary)] font-semibold py-3 px-8 rounded-lg backdrop-blur-sm transition-all duration-300 transform hover:scale-105">{option.text}</button>))}
                                 </div>
                             ) : (
                                 <div className="flex justify-center flex-wrap gap-6">
@@ -350,7 +351,7 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
                         <div className="flex flex-wrap justify-center gap-2 mb-6">
                             {menuSettings.tags.map(tag => <span key={tag} className="bg-[var(--bg-panel-light)]/50 text-[var(--text-accent)] text-sm font-medium px-3 py-1 rounded-full">{tag}</span>)}
                         </div>
-                        <p className="text-lg text-gray-200 leading-relaxed my-4 whitespace-pre-wrap">{menuSettings.description}</p>
+                        <p className="text-lg text-[var(--text-primary)] leading-relaxed my-4 whitespace-pre-wrap">{menuSettings.description}</p>
                         <button onClick={onPlay} className="mt-8 bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-4 px-16 rounded-full transition-all duration-300 transform hover:scale-105 text-xl tracking-wider shadow-lg shadow-cyan-500/20">
                             Start Simulation
                         </button>
@@ -365,7 +366,7 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
                 {activeMenu === 'credits' && (
                     <div>
                         <h2 className="text-4xl font-bold text-[var(--text-accent-bright)] mb-8">Credits</h2>
-                        <div className="max-w-3xl bg-[var(--bg-panel)]/50 p-6 rounded-lg"><p className="text-gray-300 whitespace-pre-wrap">{menuSettings.credits}</p></div>
+                        <div className="max-w-3xl bg-[var(--bg-panel)]/50 p-6 rounded-lg"><p className="text-[var(--text-primary)] whitespace-pre-wrap">{menuSettings.credits}</p></div>
                     </div>
                 )}
             </main>
@@ -392,7 +393,7 @@ const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
     };
 
     if (!images || images.length === 0) {
-        return <div className="w-full h-full bg-black/50 flex items-center justify-center text-gray-400">No Images</div>;
+        return <div className="w-full h-full bg-black/50 flex items-center justify-center text-[var(--text-secondary)]">No Images</div>;
     }
 
     return (

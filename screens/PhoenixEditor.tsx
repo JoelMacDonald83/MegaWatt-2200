@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { GameData, Template, Entity, PlayerChoice, NewsItem, PhoenixProject, CompanyLauncherSettings, GameMenuSettings, GameCardStyle, ShowcaseImage, GameListStyle, GameListBackgroundType, GameListLayout, TextStyle, ChoiceChunk, ImageCredit } from '../types';
 import { GlobeAltIcon } from '../components/icons/GlobeAltIcon';
@@ -34,9 +35,11 @@ import { ArrowDownIcon } from '../components/icons/ArrowDownIcon';
 import { MegaWattGame } from './MegaWattGame';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { ChevronDownIcon } from '../components/icons/ChevronDownIcon';
+import { BookOpenIcon } from '../components/icons/BookOpenIcon';
+import { FrameworkDoc } from './FrameworkDoc';
 
 type EditorTabs = 'game_menu' | 'gameplay' | 'blueprints' | 'entities';
-type TopLevelTabs = 'launcher' | 'games';
+type TopLevelTabs = 'launcher' | 'games' | 'framework';
 
 type DeletionModalState = 
   | { type: 'none' }
@@ -200,14 +203,14 @@ const ShowcaseImageEditor: React.FC<{
                                 <button onClick={() => handleMoveImage(index, 'up')} disabled={index === 0} className="p-1 disabled:opacity-30"><ArrowUpIcon className="w-4 h-4" /></button>
                                 <button
                                     onClick={() => onSetCoverImage(image.id)}
-                                    className={`p-1 rounded-full transition-colors ${cardCoverImageId === image.id ? 'text-yellow-400' : 'text-gray-500 hover:bg-yellow-400/20'}`}
+                                    className={`p-1 rounded-full transition-colors ${cardCoverImageId === image.id ? 'text-[var(--text-warning)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--text-warning)]/20'}`}
                                     title="Set as card cover image"
                                 >
                                     <StarIcon className="w-4 h-4" fill={cardCoverImageId === image.id ? 'currentColor' : 'none'} stroke="currentColor" />
                                 </button>
                                 <button onClick={() => handleMoveImage(index, 'down')} disabled={index === images.length - 1} className="p-1 disabled:opacity-30"><ArrowDownIcon className="w-4 h-4" /></button>
                             </div>
-                            <button onClick={() => handleRemoveImage(image.id)} className="p-1"><TrashIcon className="w-4 h-4 text-red-500/80 hover:text-red-400"/></button>
+                            <button onClick={() => handleRemoveImage(image.id)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-danger)]/80 hover:text-[var(--text-danger)]"/></button>
                         </div>
                     </div>
                     <ImageCreditEditor 
@@ -234,7 +237,7 @@ const NewsListEditor: React.FC<{
             <div key={item.id} className="bg-[var(--bg-panel-light)] p-3 rounded-md flex justify-between items-center">
                 <div>
                     <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
-                    <p className="text-sm text-[var(--text-secondary)]">{item.date} - <span className={`font-medium ${item.status === 'published' ? 'text-green-400' : 'text-yellow-400'}`}>{item.status}</span></p>
+                    <p className="text-sm text-[var(--text-secondary)]">{item.date} - <span className={`font-medium ${item.status === 'published' ? 'text-[var(--text-success)]' : 'text-[var(--text-warning)]'}`}>{item.status}</span></p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={() => onEdit(item)} className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"><PencilIcon className="w-4 h-4" /></button>
@@ -414,10 +417,10 @@ const ChunkedList: React.FC<{
                             >
                                 <span className={`flex-grow text-sm ${selectedItemId === choice.id ? 'text-[var(--text-accent)]' : ''}`}>{choice.name}</span>
                                 {/* FIX: The 'title' prop is not valid on SVG components for tooltips. Moved it to a wrapping span. */}
-                                {gameData.startChoiceId === choice.id && <span title="Start Scene"><PlayIcon className="w-4 h-4 text-green-400 mr-2 flex-shrink-0" /></span>}
+                                {gameData.startChoiceId === choice.id && <span title="Start Scene"><PlayIcon className="w-4 h-4 text-[var(--text-success)] mr-2 flex-shrink-0" /></span>}
                                 <div className="opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center flex-shrink-0">
                                     <button onClick={(e) => { e.stopPropagation(); handleSetStartChoice(choice.id) }} className="p-1" title="Set as Start Scene">
-                                        <PlayIcon className={`w-4 h-4 ${gameData.startChoiceId === choice.id ? 'text-green-400' : 'text-gray-500'}`} />
+                                        <PlayIcon className={`w-4 h-4 ${gameData.startChoiceId === choice.id ? 'text-[var(--text-success)]' : 'text-[var(--text-tertiary)]'}`} />
                                     </button>
                                     <button onClick={(e) => { e.stopPropagation(); setEditingState({ mode: 'edit-choice', choice }) }} className="p-1"><PencilIcon className="w-4 h-4" /></button>
                                     <button onClick={(e) => { e.stopPropagation(); setDeletionModalState({ type: 'delete-choice', choice }) }} className="p-1 text-[var(--text-danger)]"><TrashIcon className="w-4 h-4" /></button>
@@ -807,7 +810,7 @@ const GameEditor: React.FC<{
                 </p>
                 <div className="mt-6 flex justify-end space-x-3">
                     <button onClick={() => setDeletionModalState({ type: 'none' })} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
-                    <button onClick={handleDeleteConfirmed} className="px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors">Delete</button>
+                    <button onClick={handleDeleteConfirmed} className="px-4 py-2 rounded-md bg-[var(--bg-danger)] hover:bg-[var(--bg-danger-hover)] text-[var(--text-on-danger)] font-semibold transition-colors">Delete</button>
                 </div>
             </Modal>
       </div>
@@ -1014,6 +1017,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
             <nav className="w-20 bg-black/20 flex flex-col items-center pt-5 space-y-4 border-r border-[var(--border-primary)]">
                 <TopLevelTabButton tab="launcher" icon={<RocketLaunchIcon className="w-6 h-6" />} label="Launcher" />
                 <TopLevelTabButton tab="games" icon={<UserGroupIcon className="w-6 h-6" />} label="Games" />
+                <TopLevelTabButton tab="framework" icon={<BookOpenIcon className="w-6 h-6" />} label="Framework" />
                  <div className="!mt-auto p-2 w-full space-y-2">
                     <button onClick={onSaveProject} className="flex flex-col items-center justify-center p-2 space-y-1 w-full text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] rounded-md">
                         <ArrowDownTrayIcon className="w-5 h-5"/>
@@ -1054,7 +1058,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                                         <button onClick={() => handleGenerateImage(projectData.launcherSettings.backgroundImagePrompt!, (b64) => updateLauncherSettings({ backgroundImageBase64: `data:image/jpeg;base64,${b64}` }))} disabled={isGenerating === 'image' || !projectData.launcherSettings.backgroundImagePrompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating === 'image' ? "Generating..." : "Generate"}</button>
                                         <button onClick={() => launcherBgInputRef.current?.click()} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Image</button>
                                         <input type="file" accept="image/*" ref={launcherBgInputRef} onChange={e => handleLauncherBgUpload(e.target.files?.[0] ?? null)} className="hidden"/>
-                                        <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>
+                                        <button onClick={() => updateLauncherSettings({ backgroundImageBase64: undefined })} className="bg-red-900/50 hover:bg-red-800/50 text-[var(--text-danger)] font-bold py-2 px-4 rounded-md">Clear</button>
                                     </div>
                                     <ImageCreditEditor
                                         credit={projectData.launcherSettings.backgroundImageCredit}
@@ -1163,6 +1167,9 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                         </div>
                     </div>
                 )}
+                {topLevelTab === 'framework' && (
+                    <FrameworkDoc />
+                )}
             </main>
              {editingNewsItem && (
                  <NewsEditorModal
@@ -1177,7 +1184,7 @@ export const PhoenixEditor: React.FC<PhoenixEditorProps> = ({ projectData, onCom
                 <p>Are you sure you want to delete the game project <strong className="text-[var(--text-primary)]">{deletionModalState.type === 'delete-game' && deletionModalState.game.gameTitle}</strong>? This action cannot be undone.</p>
                 <div className="mt-6 flex justify-end space-x-3">
                     <button onClick={() => setDeletionModalState({ type: 'none' })} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
-                    <button onClick={handleDeleteConfirmed} className="px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors">Delete</button>
+                    <button onClick={handleDeleteConfirmed} className="px-4 py-2 rounded-md bg-[var(--bg-danger)] hover:bg-[var(--bg-danger-hover)] text-[var(--text-on-danger)] font-semibold transition-colors">Delete</button>
                 </div>
             </Modal>
         </div>
@@ -1247,8 +1254,8 @@ const NewsItemPreview: React.FC<{ item: NewsItem | null }> = ({ item }) => {
     }
     const styleClasses = {
         normal: { container: 'border-transparent', title: 'text-[var(--text-accent)]' },
-        urgent: { container: 'border-red-500/50', title: 'text-red-400' },
-        lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-yellow-400' }
+        urgent: { container: 'border-red-500/50', title: 'text-[var(--text-danger)]' },
+        lore: { container: 'border-yellow-600/50 bg-[var(--bg-panel)]/80', title: 'text-[var(--text-warning)]' }
     }[item.style || 'normal'];
     
     const layoutClasses = {
@@ -1276,7 +1283,7 @@ const NewsItemPreview: React.FC<{ item: NewsItem | null }> = ({ item }) => {
                                 ))}
                             </div>
                         )}
-                        <div className="text-gray-300 prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
+                        <div className="text-[var(--text-primary)] prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2" dangerouslySetInnerHTML={{ __html: parseMarkdown(item.content) }} />
                         {item.cta && item.cta.text && item.cta.url && (
                             <div className="mt-4">
                                 <a href={item.cta.url} target="_blank" rel="noopener noreferrer" className="inline-block bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-bold py-2 px-6 rounded-full transition-transform transform hover:scale-105 text-sm">
@@ -1373,7 +1380,7 @@ const NewsEditorModal: React.FC<{item: NewsItem | null; onClose: () => void; onS
                             <button onClick={handleGenerateClick} disabled={isGenerating || !newsItem.imagePrompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">{isGenerating ? "Generating..." : "Generate"}</button>
                             <label htmlFor="news-image-upload" className="text-center bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md cursor-pointer flex items-center justify-center">Upload</label>
                             <input id="news-image-upload" type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e.target.files?.[0] ?? null)} />
-                            <button onClick={() => updateField('imageBase64', undefined)} disabled={!newsItem.imageBase64} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md disabled:bg-[var(--bg-panel)] disabled:text-gray-500 disabled:cursor-not-allowed">Clear</button>
+                            <button onClick={() => updateField('imageBase64', undefined)} disabled={!newsItem.imageBase64} className="bg-red-900/50 hover:bg-red-800/50 text-[var(--text-danger)] font-bold py-2 px-4 rounded-md disabled:bg-[var(--bg-panel)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed">Clear</button>
                         </div>
                         <ImageCreditEditor
                             credit={newsItem.imageCredit}

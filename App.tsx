@@ -601,10 +601,10 @@ const AppContent: React.FC = () => {
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold">Phoenix Engine</h1>
           <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-            <button onClick={handleUndo} disabled={viewMode === 'editor' ? !canUndoEditor : !canUndoSim} className="p-1.5 text-gray-400 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
+            <button onClick={handleUndo} disabled={viewMode === 'editor' ? !canUndoEditor : !canUndoSim} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
               <ArrowUturnLeftIcon className="w-5 h-5"/>
             </button>
-            <button onClick={handleRedo} disabled={viewMode === 'editor' ? !canRedoEditor : !canRedoSim} className="p-1.5 text-gray-400 rounded-md transition-colors hover:bg-gray-700 disabled:text-gray-600 disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
+            <button onClick={handleRedo} disabled={viewMode === 'editor' ? !canRedoEditor : !canRedoSim} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
               <ArrowUturnRightIcon className="w-5 h-5"/>
             </button>
           </div>
@@ -623,7 +623,7 @@ const AppContent: React.FC = () => {
                 onRedo={handleRedo}
               />
             )}
-            <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-gray-400 rounded-md hover:bg-gray-700">
+            <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md hover:bg-[var(--bg-hover)]">
                <Cog6ToothIcon className="w-5 h-5"/>
             </button>
         </div>

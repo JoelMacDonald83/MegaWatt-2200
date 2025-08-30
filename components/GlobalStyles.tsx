@@ -41,22 +41,25 @@ body.font-size-large { /* This is the new, larger size */
   --bg-hover: #374151; /* gray-700 */
   --bg-active: #22d3ee; /* cyan-400 */
   --bg-backdrop: rgba(17, 24, 39, 0.7); /* gray-900/70 */
+  --bg-danger: #dc2626; /* red-600 */
+  --bg-danger-hover: #b91c1c; /* red-700 */
 
-  --text-primary: #f9fafb; /* gray-50 */
-  --text-secondary: #9ca3af; /* gray-400 */
-  --text-tertiary: #6b7280; /* gray-500 */
-  --text-accent: #67e8f9; /* cyan-300 */
-  --text-accent-dark: #0e7490; /* cyan-700 */
-  --text-accent-bright: #22d3ee; /* cyan-400 */
-  --text-on-accent: #111827; /* gray-900 */
+  --text-primary: #ffffff;
+  --text-secondary: #ffffff;
+  --text-tertiary: #ffffff;
+  --text-accent: #fde047; /* yellow-300 */
+  --text-accent-dark: #eab308; /* yellow-500 */
+  --text-accent-bright: #fef08a; /* yellow-200 */
+  --text-on-accent: #1f2937; /* gray-800 */
   --text-danger: #f87171; /* red-400 */
+  --text-on-danger: #ffffff;
   --text-success: #4ade80; /* green-400 */
   --text-warning: #facc15; /* yellow-400 */
   --text-teal: #5eead4; /* teal-300 */
 
   --border-primary: #374151; /* gray-700 */
   --border-secondary: #4b5563; /* gray-600 */
-  --border-accent: #22d3ee; /* cyan-400 */
+  --border-accent: #fde047; /* yellow-300 */
   
   --shadow-color: rgba(0, 0, 0, 0.5);
   --grid-bg-color: rgba(45, 212, 191, 0.05);
@@ -70,15 +73,18 @@ body.theme-light {
   --bg-hover: #e5e7eb; /* gray-200 */
   --bg-active: #4f46e5; /* indigo-600 */
   --bg-backdrop: rgba(249, 250, 251, 0.7); /* gray-50/70 */
+  --bg-danger: #dc2626; /* red-600 */
+  --bg-danger-hover: #b91c1c; /* red-700 */
   
-  --text-primary: #111827; /* gray-900 */
-  --text-secondary: #4b5563; /* gray-600 */
-  --text-tertiary: #6b7280; /* gray-500 */
+  --text-primary: #000000;
+  --text-secondary: #000000;
+  --text-tertiary: #000000;
   --text-accent: #4338ca; /* indigo-700 */
   --text-accent-dark: #3730a3; /* indigo-800 */
   --text-accent-bright: #4f46e5; /* indigo-600 */
   --text-on-accent: #ffffff;
   --text-danger: #dc2626; /* red-600 */
+  --text-on-danger: #ffffff;
   --text-success: #16a34a; /* green-600 */
   --text-warning: #f59e0b; /* amber-500 */
   --text-teal: #0d9488; /* teal-600 */
@@ -99,15 +105,18 @@ body.theme-high-contrast {
   --bg-hover: #2a2a2a;
   --bg-active: #ffff00; /* yellow-300 */
   --bg-backdrop: rgba(0, 0, 0, 0.8);
+  --bg-danger: #ff4d4d;
+  --bg-danger-hover: #ff1a1a;
   
   --text-primary: #ffffff;
-  --text-secondary: #e0e0e0;
-  --text-tertiary: #c0c0c0;
+  --text-secondary: #ffffff;
+  --text-tertiary: #ffffff;
   --text-accent: #ffff00; /* yellow-300 */
   --text-accent-dark: #eab308; /* yellow-500 */
   --text-accent-bright: #fde047; /* yellow-200 */
   --text-on-accent: #000000;
   --text-danger: #ff4d4d;
+  --text-on-danger: #000000;
   --text-success: #52ff52;
   --text-warning: #ffa500;
   --text-teal: #00ffff;
@@ -145,6 +154,26 @@ button:focus-visible {
 
 .focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-input)] focus:ring-[var(--border-accent)];
+}
+
+/* Prose overrides for Markdown content */
+.prose {
+  --tw-prose-body: var(--text-primary);
+  --tw-prose-headings: var(--text-accent-bright);
+  --tw-prose-lead: var(--text-secondary);
+  --tw-prose-links: var(--text-accent);
+  --tw-prose-bold: var(--text-primary);
+  --tw-prose-counters: var(--text-secondary);
+  --tw-prose-bullets: var(--text-secondary);
+  --tw-prose-hr: var(--border-primary);
+  --tw-prose-quotes: var(--text-accent);
+  --tw-prose-quote-borders: var(--border-primary);
+  --tw-prose-captions: var(--text-tertiary);
+  --tw-prose-code: var(--text-teal);
+  --tw-prose-pre-code: var(--text-teal);
+  --tw-prose-pre-bg: var(--bg-input);
+  --tw-prose-th-borders: var(--border-primary);
+  --tw-prose-td-borders: var(--border-secondary);
 }
 
 `;

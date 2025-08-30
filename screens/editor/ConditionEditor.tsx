@@ -179,10 +179,10 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
                  </StyleSelect>
                  <div>
                     <div className="flex items-center gap-2 mb-1">
-                        <label className="block text-xs font-medium text-gray-400">Value</label>
+                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Value</label>
                         <HelpTooltip title="Comparison Value" content="The value to compare against the attribute. Leave this blank to check if an attribute 'is set' or 'is not set' (using 'Equals' or 'Not Equals')." />
                     </div>
-                    <input type="text" value={attrCondition.value === null ? '' : String(attrCondition.value)} onChange={e => setAttrCondition(p => ({ ...p, value: e.target.value === '' ? null : e.target.value }))} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm" placeholder="Leave blank for 'not set'"/>
+                    <input type="text" value={attrCondition.value === null ? '' : String(attrCondition.value)} onChange={e => setAttrCondition(p => ({ ...p, value: e.target.value === '' ? null : e.target.value }))} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-sm" placeholder="Leave blank for 'not set'"/>
                 </div>
             </div>
         </div>
@@ -263,15 +263,15 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({ isOpen, onClos
                     {!isFilter && <option value="entity_exists">Check if Entity Exists</option>}
                 </StyleSelect>
 
-                <div className="p-3 bg-gray-900/50 rounded-md border border-gray-700">
+                <div className="p-3 bg-[var(--bg-input)]/50 rounded-md border border-[var(--border-primary)]">
                     {conditionType === 'attribute' && renderAttributeEditor()}
                     {conditionType === 'entity_exists' && renderEntityExistsEditor()}
                     {conditionType === 'has_stuff' && renderHasStuffEditor()}
                 </div>
             </div>
              <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={handleClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Condition</button>
+                <button onClick={handleClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Condition</button>
             </div>
         </Modal>
     );

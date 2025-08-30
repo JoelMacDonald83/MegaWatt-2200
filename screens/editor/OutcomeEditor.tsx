@@ -88,10 +88,10 @@ export const OutcomeEditor: React.FC<OutcomeEditorProps> = ({ isOpen, onClose, o
             </StyleSelect>
             <div>
                 <div className="flex items-center gap-2 mb-1">
-                    <label className="block text-xs font-medium text-gray-400">New Entity Name</label>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">New Entity Name</label>
                     <HelpTooltip title="New Entity Name" content="The name that the newly created entity will have." />
                 </div>
-                <input type="text" value={createOutcome.name} onChange={e => setCreateOutcome(p => ({...p, name: e.target.value}))} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2" />
+                <input type="text" value={createOutcome.name} onChange={e => setCreateOutcome(p => ({...p, name: e.target.value}))} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" />
             </div>
         </div>
     );
@@ -125,7 +125,7 @@ export const OutcomeEditor: React.FC<OutcomeEditorProps> = ({ isOpen, onClose, o
             </StyleSelect>
              <div>
                  <div className="flex items-center gap-2 mb-1">
-                    <label className="block text-xs font-medium text-gray-400">New Value</label>
+                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">New Value</label>
                     <HelpTooltip title="New Value" content={isDynamicContext ? "The new value to set for the attribute. You can also click 'Use Chosen ID' to set the attribute value to be the ID of the entity the player selected." : "The new value to set for the attribute."} />
                 </div>
                 <div className="flex items-center gap-2">
@@ -133,13 +133,13 @@ export const OutcomeEditor: React.FC<OutcomeEditorProps> = ({ isOpen, onClose, o
                         type="text" 
                         value={String(updateOutcome.value ?? '')} 
                         onChange={e => setUpdateOutcome(p => ({...p, value: e.target.value}))} 
-                        className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 disabled:bg-gray-700 disabled:text-gray-400"
+                        className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 disabled:bg-[var(--bg-panel-light)] disabled:text-[var(--text-tertiary)]"
                         disabled={updateOutcome.value === '<chosen_entity_id>'}
                     />
                     {isDynamicContext && (
                         <button 
                             onClick={() => setUpdateOutcome(p => ({...p, value: p.value === '<chosen_entity_id>' ? '' : '<chosen_entity_id>'}))}
-                            className={`px-2 py-2 text-xs rounded-md whitespace-nowrap ${updateOutcome.value === '<chosen_entity_id>' ? 'bg-cyan-600 text-white' : 'bg-gray-600 hover:bg-gray-500 text-white'}`}
+                            className={`px-2 py-2 text-xs rounded-md whitespace-nowrap ${updateOutcome.value === '<chosen_entity_id>' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'}`}
                         >
                             Use Chosen ID
                         </button>
@@ -165,14 +165,14 @@ export const OutcomeEditor: React.FC<OutcomeEditorProps> = ({ isOpen, onClose, o
                     <option value="create_entity">Create a new Entity</option>
                     <option value="update_entity">Update an existing Entity</option>
                  </StyleSelect>
-                 <div className="p-3 bg-gray-900/50 rounded-md border border-gray-700">
+                 <div className="p-3 bg-[var(--bg-input)]/50 rounded-md border border-[var(--border-primary)]">
                     {outcomeType === 'create_entity' && renderCreateEditor()}
                     {outcomeType === 'update_entity' && renderUpdateEditor()}
                  </div>
             </div>
              <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold transition-colors">Cancel</button>
-                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors">Save Outcome</button>
+                <button onClick={onClose} className="px-4 py-2 rounded-md bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold transition-colors">Cancel</button>
+                <button onClick={handleSave} className="px-4 py-2 rounded-md bg-[var(--bg-active)] hover:opacity-90 text-[var(--text-on-accent)] font-semibold transition-colors">Save Outcome</button>
             </div>
         </Modal>
     );
