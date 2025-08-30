@@ -46,10 +46,39 @@ export interface Template {
 }
 
 export interface ImageCredit {
+  title?: string;
   artistName?: string;
   sourceUrl?: string;
-  socialsUrl?: string;
+  websiteUrl?: string;
+  twitterUrl?: string;
+  artstationUrl?: string;
+  tumblrUrl?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  pinterestUrl?: string;
+  deviantartUrl?: string;
+  behanceUrl?: string;
+  linkedinUrl?: string;
+  vimeoUrl?: string;
+  youtubeUrl?: string;
+  pixivUrl?: string;
+  dribbbleUrl?: string;
+  itchioUrl?: string;
+  otherUrl?: string;
 }
+
+export interface ImageStyle {
+  objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+  objectPosition?: string; // e.g., 'center', '50% 50%', 'top right'
+  opacity?: number; // 0 to 1
+  borderRadius?: number; // in pixels
+  filterGrayscale?: number; // 0 to 1
+  filterSepia?: number; // 0 to 1
+  filterBlur?: number; // in pixels
+  filterBrightness?: number; // e.g., 1.5 for 150%
+  filterContrast?: number; // e.g., 1.2 for 120%
+}
+
 
 export interface Entity {
   id:string;
@@ -61,8 +90,9 @@ export interface Entity {
     [attributeId: string]: string | number | null;
   };
   imagePrompt?: string;
-  imageBase64?: string;
+  src?: string;
   imageCredit?: ImageCredit;
+  imageStyle?: ImageStyle;
   styles?: {
     borderColor?: string; // e.g., 'cyan-500'
     borderWidth?: 'none' | 'sm' | 'md' | 'lg';
@@ -109,10 +139,12 @@ export interface PlayerChoice {
   // --- Fields from former StoryCard ---
   description: string; // The main text for this scene/node
   imagePrompt: string;
-  imageBase64?: string; // Can be from AI gen (raw base64) or upload (data URL)
+  src?: string; // Can be from AI gen (raw base64) or upload (data URL)
   imageCredit?: ImageCredit;
-  foregroundImageBase64?: string; // Will be a data URL from upload
+  imageStyle?: ImageStyle;
+  foregroundImageSrc?: string; // Will be a data URL from upload
   foregroundImageCredit?: ImageCredit;
+  foregroundImageStyle?: ImageStyle;
 
   // Combined styles from StoryCard and original PlayerChoice
   styles?: {
@@ -186,8 +218,9 @@ export interface NewsItem {
   author?: string;
   content: string; // Markdown content
   imagePrompt?: string;
-  imageBase64?: string;
+  src?: string;
   imageCredit?: ImageCredit;
+  imageStyle?: ImageStyle;
   tags?: string[];
   style?: 'normal' | 'urgent' | 'lore';
   status: 'draft' | 'published';
@@ -201,8 +234,9 @@ export interface NewsItem {
 export interface ShowcaseImage {
   id: string;
   prompt: string;
-  base64?: string;
+  src?: string;
   credit?: ImageCredit;
+  style?: ImageStyle;
 }
 
 export interface GameMenuSettings {
@@ -268,8 +302,9 @@ export interface CompanyLauncherSettings {
   companyName: string;
   news: NewsItem[];
   backgroundImagePrompt?: string;
-  backgroundImageBase64?: string;
+  src?: string;
   backgroundImageCredit?: ImageCredit;
+  backgroundImageStyle?: ImageStyle;
   gameListLayout?: GameListLayout;
   gameCardStyle?: Partial<GameCardStyle>;
   gameListStyle?: Partial<GameListStyle>;
@@ -291,6 +326,7 @@ export interface EditorSettings {
   theme: EditorTheme;
   fontSize: EditorFontSize;
   uiScale: number;
+  autosaveFileDownloadEnabled?: boolean;
 }
 
 // --- Simulation-specific types ---

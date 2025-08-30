@@ -1,6 +1,5 @@
 
-
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
 import type { GameData, ChoiceOutcome, PhoenixProject, SimSaveSlot } from './types';
@@ -8,7 +7,7 @@ import { debugService } from './services/debugService';
 import { HistoryService } from './services/historyService';
 import { ArrowUturnLeftIcon } from './components/icons/ArrowUturnLeftIcon';
 import { ArrowUturnRightIcon } from './components/icons/ArrowUturnRightIcon';
-import { SettingsProvider } from './contexts/SettingsContext';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { Cog6ToothIcon } from './components/icons/Cog6ToothIcon';
 import { SettingsModal } from './components/SettingsModal';
 import { GlobalStyles } from './components/GlobalStyles';
@@ -16,6 +15,7 @@ import { SimulationScreen } from './screens/SimulationScreen';
 import { SimulationHeader } from './components/SimulationHeader';
 import { Toast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AutosavePrompt } from './components/AutosavePrompt';
 
 // --- IDs for consistent referencing ---
 
@@ -99,7 +99,8 @@ const initialGameData: GameData = {
         {
             id: SHOWCASE_IMAGE_INITIAL_1,
             prompt: 'A lone figure stands on a high balcony overlooking a futuristic, cyberpunk colony dome at night. The mood is contemplative and serious.',
-            base64: ''
+            // FIX: The 'base64' property does not exist on type 'ShowcaseImage'. Changed to 'src'.
+            src: ''
         }
     ],
     news: [
@@ -110,7 +111,8 @@ const initialGameData: GameData = {
         author: 'Engineering Department',
         content: '**Attention all personnel:**\n\nWe are tracking intermittent power surges originating from the geothermal plant. Non-essential systems may be temporarily rerouted.\n\nAn investigation is underway. Please conserve energy until further notice.',
         imagePrompt: 'A futuristic power grid schematic with a glowing red warning symbol over a specific sector. Dark, high-tech interface.',
-        imageBase64: '',
+        // FIX: The 'imageBase64' property does not exist on type 'NewsItem'. Changed to 'src'.
+        src: '',
         tags: ['System Alert', 'Engineering'],
         style: 'urgent',
         status: 'published',
@@ -373,6 +375,7 @@ const initialProject: PhoenixProject = {
 
 
 const AppContent: React.FC = () => {
+  const { settings } = useSettings();
   const [viewMode, setViewMode] = useState<'editor' | 'launcher' | 'simulation'>('editor');
   
   const editorHistory = useMemo(() => new HistoryService<PhoenixProject>(initialProject), []);
@@ -390,13 +393,108 @@ const AppContent: React.FC = () => {
   
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' as 'success' | 'error' });
 
+  // --- AUTOSAVE STATE ---
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [autosaveToLoad, setAutosaveToLoad] = useState<PhoenixProject | null>(null);
+  const autosaveTimeoutRef = useRef<number | null>(null);
+  const lastFileSaveTimestampRef = useRef<number>(0);
+  const isProgrammaticChange = useRef(true); // Start as true to prevent initial save
+
+
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     debugService.log(`Toast: ${type.toUpperCase()}`, { message });
     setToast({ show: true, message, type });
-    // Auto-hide toast after 5 seconds
     setTimeout(() => setToast(p => p.show ? { ...p, show: false } : p), 5000);
   }, []);
 
+  // --- AUTOSAVE LOGIC ---
+  useEffect(() => {
+    try {
+        const savedDataString = localStorage.getItem('phoenix_autosave');
+        if (savedDataString) {
+            const savedData = JSON.parse(savedDataString);
+            if (savedData.launcherSettings && savedData.games) {
+                setAutosaveToLoad(savedData);
+                debugService.log("App: Found autosave data in local storage.");
+            }
+        }
+    } catch (error) {
+        debugService.log("App: Failed to load autosave from localStorage", { error });
+        localStorage.removeItem('phoenix_autosave');
+    }
+  }, []);
+
+  const downloadProjectFile = useCallback((data: PhoenixProject, isAutosave: boolean) => {
+    try {
+        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+        const filename = isAutosave
+          ? `phoenix_project_autosave_${timestamp}.json`
+          : `phoenix_project_${timestamp}.json`;
+        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
+        const link = document.createElement('a');
+        link.href = jsonString;
+        link.download = filename;
+        link.click();
+        return true;
+    } catch(error) {
+        debugService.log('App: Project file download failed', { error });
+        showToast('Failed to prepare project file for download.', 'error');
+        return false;
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (isProgrammaticChange.current) {
+        isProgrammaticChange.current = false;
+        setSaveStatus('saved');
+        return;
+    }
+
+    setSaveStatus('unsaved');
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+
+    autosaveTimeoutRef.current = window.setTimeout(() => {
+        setSaveStatus('saving');
+        try {
+            localStorage.setItem('phoenix_autosave', JSON.stringify(projectData));
+            debugService.log("App: Project autosaved to local storage.");
+
+            if (settings.autosaveFileDownloadEnabled) {
+                const now = Date.now();
+                if (now - lastFileSaveTimestampRef.current > 30000) { // Throttle file downloads to 30s
+                    if (downloadProjectFile(projectData, true)) {
+                        lastFileSaveTimestampRef.current = now;
+                        debugService.log("App: Project autosaved to file.");
+                        showToast("Project autosaved to file.", "success");
+                    }
+                }
+            }
+            setTimeout(() => setSaveStatus('saved'), 500); // Visual feedback
+        } catch (error) {
+            debugService.log("App: Autosave to localStorage failed", { error });
+            showToast("Autosave failed. Your browser storage might be full.", "error");
+            setSaveStatus('unsaved');
+        }
+    }, 3000); // 3-second debounce
+
+    return () => {
+        if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+    };
+  }, [projectData, settings.autosaveFileDownloadEnabled, showToast, downloadProjectFile]);
+  
+  const loadAutosave = () => {
+      if (autosaveToLoad) {
+          isProgrammaticChange.current = true;
+          editorHistory.clearAndPush(autosaveToLoad);
+          setAutosaveToLoad(null);
+          showToast("Restored session from autosave.", "success");
+      }
+  };
+
+  const dismissAutosave = () => {
+      setAutosaveToLoad(null);
+  };
+  
   // Subscribe to Editor History
   useEffect(() => {
     debugService.log("App: Component mounted", { initialProject });
@@ -416,8 +514,6 @@ const AppContent: React.FC = () => {
       const unsubscribe = simHistory.subscribe(() => {
           const currentSimData = simHistory.current();
           if (currentSimData) {
-              // This is tricky. We need to update the state that the SimulationScreen is looking at.
-              // Direct state update from here is better than passing setSimulationProject down.
               setSimulationProject(currentSimData);
           }
           setCanUndoSim(simHistory.canUndo());
@@ -453,12 +549,12 @@ const AppContent: React.FC = () => {
   }, [handleUndo, handleRedo]);
 
   const commitChange = useCallback((newProjectData: PhoenixProject) => {
+      isProgrammaticChange.current = false; // User-driven change
       editorHistory.push(newProjectData);
   }, [editorHistory]);
 
   const handleStartSimulation = (game: GameData) => {
       debugService.log("App: Starting simulation for game", { gameTitle: game.gameTitle });
-      // Deep copy to prevent mutation of editor state
       const gameCopy = JSON.parse(JSON.stringify(game));
       setSimulationProject(gameCopy);
       setViewMode('simulation');
@@ -476,7 +572,6 @@ const AppContent: React.FC = () => {
       if (originalGame) {
           debugService.log("App: Restarting simulation", { gameTitle: originalGame.gameTitle });
           const gameCopy = JSON.parse(JSON.stringify(originalGame));
-          // This creates a new history service as well via the useMemo dependency
           setSimulationProject(gameCopy);
       }
   };
@@ -514,18 +609,9 @@ const AppContent: React.FC = () => {
   };
   
   const handleSaveProject = () => {
-    debugService.log('App: Saving project', { projectData });
-    try {
-        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(projectData, null, 2))}`;
-        const link = document.createElement('a');
-        link.href = jsonString;
-        link.download = `phoenix_project_${timestamp}.json`;
-        link.click();
+    debugService.log('App: Saving project manually', { projectData });
+    if(downloadProjectFile(projectData, false)) {
         showToast('Project saved successfully!');
-    } catch(error) {
-        debugService.log('App: Project save failed', { error });
-        showToast('Failed to save project.', 'error');
     }
   };
 
@@ -533,13 +619,9 @@ const AppContent: React.FC = () => {
     try {
       debugService.log('App: Attempting to load project from string', { length: jsonString.length });
       const loadedData = JSON.parse(jsonString);
-      // Basic validation to see if it looks like a project data file
       if (loadedData.launcherSettings && loadedData.games) {
-        // MIGRATION LOGIC for choice chunks
         loadedData.games.forEach((game: GameData & { choices?: any }) => {
             if (game.choices && !game.allChoices) {
-// FIX: The original debug log contained a malformed string that looked like a file concatenation artifact.
-// This could confuse parsing tools and was likely unintentional. Replaced with a sensible log message.
                 debugService.log("App: Migrating old game data structure", { gameTitle: game.gameTitle });
                 game.allChoices = game.choices;
                 delete game.choices;
@@ -553,6 +635,7 @@ const AppContent: React.FC = () => {
                 }
             }
         });
+        isProgrammaticChange.current = true;
         editorHistory.clearAndPush(loadedData);
         showToast('Project loaded successfully!');
       } else {
@@ -580,13 +663,11 @@ const AppContent: React.FC = () => {
           />
         );
       case 'launcher':
-        // FIX: Pass a dummy onChoiceMade prop to satisfy the interface. This component doesn't use it.
         return <MegaWattGame projectData={projectData} onStartSimulation={handleStartSimulation} onChoiceMade={() => {}} />;
       case 'simulation':
         if (simulationProject) {
           return <SimulationScreen gameData={simulationProject} onChoiceMade={handleChoiceOutcomes} />;
         }
-        // Fallback to editor if simulation data is missing
         setViewMode('editor');
         return null;
       default:
@@ -596,38 +677,59 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen font-sans bg-[var(--bg-main)]">
-      {/* Header */}
-      <header className="flex items-center justify-between p-2 pl-4 border-b border-[var(--border-primary)] bg-[var(--bg-panel)]/50 backdrop-blur-sm flex-shrink-0 z-20">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold">Phoenix Engine</h1>
-          <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
-            <button onClick={handleUndo} disabled={viewMode === 'editor' ? !canUndoEditor : !canUndoSim} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
-              <ArrowUturnLeftIcon className="w-5 h-5"/>
-            </button>
-            <button onClick={handleRedo} disabled={viewMode === 'editor' ? !canRedoEditor : !canRedoSim} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
-              <ArrowUturnRightIcon className="w-5 h-5"/>
-            </button>
+      {viewMode !== 'simulation' ? (
+        <header className="flex items-center justify-between p-2 pl-4 border-b border-[var(--border-primary)] bg-[var(--bg-panel)]/50 backdrop-blur-sm flex-shrink-0 z-20">
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-bold">Phoenix Engine</h1>
+             <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+                <button 
+                    onClick={() => setViewMode('editor')} 
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'editor' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                    Editor
+                </button>
+                <button 
+                    onClick={() => setViewMode('launcher')} 
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'launcher' ? 'bg-[var(--bg-active)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                    Launcher
+                </button>
+            </div>
+            <div className="flex items-center space-x-1 bg-[var(--bg-panel-light)] p-1 rounded-lg">
+              <button onClick={handleUndo} disabled={!canUndoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
+                <ArrowUturnLeftIcon className="w-5 h-5"/>
+              </button>
+              <button onClick={handleRedo} disabled={!canRedoEditor} className="p-1.5 text-[var(--text-secondary)] rounded-md transition-colors hover:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
+                <ArrowUturnRightIcon className="w-5 h-5"/>
+              </button>
+            </div>
+            <div className="text-xs text-[var(--text-tertiary)] w-28 text-left transition-colors duration-300">
+                {saveStatus === 'saving' && 'Saving...'}
+                {saveStatus === 'saved' && 'All changes saved'}
+                {saveStatus === 'unsaved' && <span className="text-[var(--text-warning)] font-semibold">Unsaved changes...</span>}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-           {viewMode === 'simulation' && simulationProject && (
-              <SimulationHeader 
-                gameTitle={simulationProject.gameTitle}
-                onExit={handleExitSimulation}
-                onRestart={handleRestartSimulation}
-                onLoad={handleLoadSimulation}
-                currentSimState={simulationProject}
-                canUndo={canUndoSim}
-                canRedo={canRedoSim}
-                onUndo={handleUndo}
-                onRedo={handleRedo}
-              />
-            )}
+          <div className="flex items-center gap-4">
             <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 text-[var(--text-secondary)] rounded-md hover:bg-[var(--bg-hover)]">
                <Cog6ToothIcon className="w-5 h-5"/>
             </button>
-        </div>
-      </header>
+          </div>
+        </header>
+      ) : (
+        simulationProject && (
+           <SimulationHeader 
+            gameTitle={simulationProject.gameTitle}
+            onExit={handleExitSimulation}
+            onRestart={handleRestartSimulation}
+            onLoad={handleLoadSimulation}
+            currentSimState={simulationProject}
+            canUndo={canUndoSim}
+            canRedo={canRedoSim}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+          />
+        )
+      )}
 
       {/* Main Content */}
       <main className="flex-1 min-h-0">
@@ -635,6 +737,7 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Modals & Toasts */}
+      {autosaveToLoad && <AutosavePrompt onConfirm={loadAutosave} onDismiss={dismissAutosave} />}
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
       <Toast 
         message={toast.message}

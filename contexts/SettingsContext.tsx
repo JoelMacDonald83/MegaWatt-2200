@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { EditorSettings, EditorTheme, EditorFontSize } from '../types';
 
@@ -5,6 +6,7 @@ const defaultSettings: EditorSettings = {
   theme: 'high-contrast',
   fontSize: 'large',
   uiScale: 1,
+  autosaveFileDownloadEnabled: false,
 };
 
 const SettingsContext = createContext<{
@@ -21,7 +23,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [settings, setSettings] = useState<EditorSettings>(() => {
     try {
       const storedSettings = localStorage.getItem('phoenixEditorSettings');
-      return storedSettings ? JSON.parse(storedSettings) : defaultSettings;
+      // Merge stored settings with defaults to handle new settings being added
+      const loaded = storedSettings ? JSON.parse(storedSettings) : {};
+      return { ...defaultSettings, ...loaded };
     } catch (error) {
       console.error('Failed to load settings from localStorage', error);
       return defaultSettings;

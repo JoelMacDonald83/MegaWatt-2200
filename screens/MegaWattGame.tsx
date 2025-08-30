@@ -1,7 +1,6 @@
 
-
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit } from '../types';
+import type { GameData, Entity, Template, ChoiceOutcome, PlayerChoice, ChoiceOption, Condition, ChoiceOutcomeUpdateEntity, PhoenixProject, CompanyLauncherSettings, NewsItem, GameCardStyle, ShowcaseImage, GameListStyle, TextStyle, ImageCredit, ImageStyle } from '../types';
 import { evaluateCondition } from '../services/conditionEvaluator';
 import { debugService } from '../services/debugService';
 import { PlayIcon } from '../components/icons/PlayIcon';
@@ -15,6 +14,25 @@ import { EntityCard } from '../components/cards/EntityCard';
 import { CreditDisplay } from '../components/CreditDisplay';
 
 // --- SHARED UTILS ---
+
+const imageStyleToCss = (style?: ImageStyle): React.CSSProperties => {
+    if (!style) return {};
+    const filters = [
+        style.filterGrayscale ? `grayscale(${style.filterGrayscale})` : '',
+        style.filterSepia ? `sepia(${style.filterSepia})` : '',
+        style.filterBlur ? `blur(${style.filterBlur}px)` : '',
+        style.filterBrightness ? `brightness(${style.filterBrightness})` : '',
+        style.filterContrast ? `contrast(${style.filterContrast})` : '',
+    ].filter(Boolean).join(' ');
+
+    return {
+        objectFit: style.objectFit,
+        objectPosition: style.objectPosition,
+        opacity: style.opacity,
+        borderRadius: style.borderRadius ? `${style.borderRadius}px` : undefined,
+        filter: filters || undefined,
+    };
+};
 
 const parseMarkdown = (text: string): string => {
   if (!text) return '';
@@ -56,16 +74,16 @@ const NewsDisplay: React.FC<{news: NewsItem[]}> = ({ news }) => {
                 
                 const layoutClasses = {
                     container: `flex flex-col ${item.layout !== 'image_top' ? 'md:flex-row' : ''} ${item.layout === 'image_right' ? 'md:flex-row-reverse' : ''} gap-6`,
-                    image: `flex-shrink-0 rounded-md ${item.layout !== 'image_top' ? 'md:w-1/3' : 'w-full h-48'} object-cover`,
+                    image: `flex-shrink-0 rounded-md ${item.layout !== 'image_top' ? 'md:w-1/3' : 'w-full h-48'}`,
                 };
 
                 return (
                     <div key={item.id} className={`bg-[var(--bg-panel)]/50 rounded-lg overflow-hidden border ${styleClasses.container} transition-colors`}>
                         <div className="p-6">
                             <div className={layoutClasses.container}>
-                                {item.imageBase64 && (
+                                {item.src && (
                                     <div className="relative">
-                                        <img src={item.imageBase64} alt={item.title} className={layoutClasses.image} />
+                                        <img src={item.src} alt={item.title} className={layoutClasses.image} style={imageStyleToCss(item.imageStyle)} />
                                         {item.imageCredit && <CreditDisplay credit={item.imageCredit} className="bottom-2 right-2" />}
                                     </div>
                                 )}
@@ -263,20 +281,28 @@ export const ScenePresenter: React.FC<{ choice: PlayerChoice; gameData: GameData
     const textAnimationClass = animationState === 'in' ? `text-anim-${styles.textAnimation}` : 'opacity-0';
     const fgAnimationClass = animationState === 'in' ? `anim-fg-${styles.fg.animation}` : 'opacity-0';
     const sceneStyle = { animationDuration: `${styles.cardTransitionDuration}s` };
-    const bgStyle = { backgroundImage: choice.imageBase64 ? `url(${choice.imageBase64})` : undefined, animationDuration: `${styles.backgroundAnimationDuration}s`};
+    const bgStyle: React.CSSProperties = {
+        backgroundImage: choice.src ? `url(${choice.src})` : undefined,
+        animationDuration: `${styles.backgroundAnimationDuration}s`,
+        ...imageStyleToCss(choice.imageStyle)
+    };
     const textStyle = { animationDuration: `${styles.textAnimationDuration}s`, animationDelay: `${styles.textAnimationDelay}s` };
-    const fgStyle = { animationDuration: `${styles.fg.animationDuration}s`, animationDelay: `${styles.fg.animationDelay}s` };
+    const fgStyle: React.CSSProperties = { 
+        animationDuration: `${styles.fg.animationDuration}s`,
+        animationDelay: `${styles.fg.animationDelay}s`,
+        ...imageStyleToCss(choice.foregroundImageStyle)
+    };
 
 
     return (
         <div className={`fixed inset-0 bg-black ${sceneTransitionClass} z-30`} style={sceneStyle}>
-            {choice.imageBase64 && <div className={`absolute inset-0 bg-cover bg-center ${styles.backgroundAnimation !== 'none' ? `anim-bg-${styles.backgroundAnimation}` : ''} ${backgroundEffectClass} transition-all duration-300`} style={bgStyle} />}
+            {choice.src && <div className={`absolute inset-0 bg-cover bg-center ${styles.backgroundAnimation !== 'none' ? `anim-bg-${styles.backgroundAnimation}` : ''} ${backgroundEffectClass} transition-all duration-300`} style={bgStyle} />}
             {choice.imageCredit && <CreditDisplay credit={choice.imageCredit} className="bottom-2 right-2" />}
             <div className={`absolute inset-0 ${overlayClass}`} />
-            {choice.foregroundImageBase64 && 
+            {choice.foregroundImageSrc && 
                 <div className={`absolute inset-0 flex items-center p-8 md:p-16 ${fgContainerPositionClass}`}>
                     <div className={`relative ${fgSizeClass}`}>
-                         <img src={choice.foregroundImageBase64} style={fgStyle} className={`object-contain max-h-full w-full ${fgAnimationClass}`} alt="Foreground Element"/>
+                         <img src={choice.foregroundImageSrc} style={fgStyle} className={`object-contain max-h-full w-full ${fgAnimationClass}`} alt="Foreground Element"/>
                          {choice.foregroundImageCredit && <CreditDisplay credit={choice.foregroundImageCredit} className="top-0 right-0" />}
                     </div>
                 </div>
@@ -327,7 +353,7 @@ const GameLauncher: React.FC<{gameData: GameData, onPlay: () => void, onBack: ()
 
     return (
         <div className="relative min-h-screen bg-black text-white flex">
-            {bgImage?.base64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage.base64})`, animationDuration: '45s' }} />}
+            {bgImage?.src && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${bgImage.src})`, animationDuration: '45s', ...imageStyleToCss(bgImage.style) }} />}
             {bgImage?.credit && <CreditDisplay credit={bgImage.credit} className="bottom-2 right-2" />}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             
@@ -401,7 +427,7 @@ const ImageSlider: React.FC<{ images: ShowcaseImage[] }> = ({ images }) => {
             <div className="w-full h-full overflow-hidden">
                 <div className="whitespace-nowrap transition-transform duration-500 ease-in-out" style={{ transform: `translateX(${-currentIndex * 100}%)` }}>
                     {images.map((image, index) => (
-                        <div key={image.id} className="inline-block w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${image.base64})` }} />
+                        <div key={image.id} className="inline-block w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${image.src})`, ...imageStyleToCss(image.style) }} />
                     ))}
                 </div>
             </div>
@@ -481,7 +507,7 @@ const GamePreviewCard: React.FC<{
     const imageContent = cardStyle.imageDisplay === 'slider' && game.menuSettings.showcaseImages?.length > 0 ? (
         <ImageSlider images={game.menuSettings.showcaseImages} />
     ) : (
-        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: coverImage?.base64 ? `url(${coverImage.base64})` : 'none', backgroundColor: '#111' }} />
+        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: coverImage?.src ? `url(${coverImage.src})` : 'none', backgroundColor: '#111', ...imageStyleToCss(coverImage?.style) }} />
     );
 
     if (layout === 'grid') {
@@ -565,7 +591,7 @@ const CompanyLauncher: React.FC<{settings: CompanyLauncherSettings, games: GameD
 
     return (
         <div className="relative min-h-screen bg-black text-white flex flex-col">
-            {settings.backgroundImageBase64 && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${settings.backgroundImageBase64})` }} />}
+            {settings.src && <div className="absolute inset-0 bg-cover bg-center anim-bg-kenburns-subtle" style={{ backgroundImage: `url(${settings.src})`, ...imageStyleToCss(settings.backgroundImageStyle) }} />}
             {settings.backgroundImageCredit && <CreditDisplay credit={settings.backgroundImageCredit} className="bottom-2 right-2" />}
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 

@@ -15,13 +15,14 @@ export const StyleSelect: React.FC<{label: string, value: string | undefined, on
     </div>
 );
 
-export const StyleNumberInput: React.FC<{label: string, value: number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, step?: number, min?: number, wrapperClassName?: string, help?: string}> = ({label, value, onChange, step=0.1, min=0, wrapperClassName, help}) => (
+// FIX: Added the 'max' prop to allow setting a maximum value on the number input.
+export const StyleNumberInput: React.FC<{label: string, value: number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, step?: number, min?: number, max?: number, wrapperClassName?: string, help?: string}> = ({label, value, onChange, step=0.1, min=0, max, wrapperClassName, help}) => (
     <div className={wrapperClassName}>
         <div className="flex items-center gap-2 mb-1">
             <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">{label}</label>
             {help && <HelpTooltip title={label} content={help} />}
         </div>
-        <input type="number" value={value} onChange={onChange} step={step} min={min} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]" />
+        <input type="number" value={value} onChange={onChange} step={step} min={min} max={max} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-[length:var(--font-size-sm)]" />
     </div>
 );
 

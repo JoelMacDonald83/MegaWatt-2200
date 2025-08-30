@@ -1,12 +1,11 @@
 
-
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Entity, GameData, AttributeDefinition, Template, ImageCredit } from '../../types';
 import { debugService } from '../../services/debugService';
 import { StyleSelect } from '../../components/editor/StyleComponents';
 import { HelpTooltip } from '../../components/HelpTooltip';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import { ImageInput } from '../../components/editor/ImageInput';
 
 interface EntityEditorProps {
     initialEntity: Entity;
@@ -19,41 +18,6 @@ interface EntityEditorProps {
     isGeneratingImage: boolean;
     isNew: boolean;
 }
-
-const ImageCreditEditor: React.FC<{
-  credit?: ImageCredit;
-  onUpdate: (credit: ImageCredit) => void;
-}> = ({ credit, onUpdate }) => {
-  const handleChange = (field: keyof ImageCredit, value: string) => {
-    onUpdate({ ...credit, [field]: value });
-  };
-  return (
-    <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
-       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
-        <input 
-            type="text" 
-            placeholder="Artist Name" 
-            value={credit?.artistName || ''}
-            onChange={(e) => handleChange('artistName', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-        <input 
-            type="url" 
-            placeholder="Source URL (e.g., from Unsplash)" 
-            value={credit?.sourceUrl || ''}
-            onChange={(e) => handleChange('sourceUrl', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-        <input 
-            type="url" 
-            placeholder="Artist Socials/Portfolio URL" 
-            value={credit?.socialsUrl || ''}
-            onChange={(e) => handleChange('socialsUrl', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-    </div>
-  )
-};
 
 const AttributeInput: React.FC<{
     attribute: AttributeDefinition;
@@ -185,7 +149,6 @@ const useResolvedTemplateProperties = (templateId: string, gameData: GameData): 
 
 export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSave, onCancel, gameData, onGenerate, onGenerateImage, isGenerating, isGeneratingImage, isNew }) => {
     const [localEntity, setLocalEntity] = useState<Entity>(() => JSON.parse(JSON.stringify(initialEntity)));
-    const bgInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         debugService.log('EntityEditor: Component mounted or received new props.', { initialEntity, isNew });
@@ -198,7 +161,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
 
     const styles = useMemo(() => {
         const s = localEntity.styles || {};
-        const hasBgImage = !!localEntity.imageBase64;
+        const hasBgImage = !!localEntity.src;
         return {
             borderColor: s.borderColor || 'cyan-500',
             borderWidth: s.borderWidth || 'md',
@@ -207,7 +170,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
             backgroundColor: s.backgroundColor || 'bg-[var(--bg-panel)]/50',
             overlay: s.backgroundOverlayStrength || (hasBgImage ? 'medium' : 'none'),
         };
-    }, [localEntity.styles, localEntity.imageBase64]);
+    }, [localEntity.styles, localEntity.src]);
 
     const previewClasses = useMemo(() => {
         return {
@@ -251,28 +214,6 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
             debugService.log('EntityEditor: AI generation completed and updated entity state', { updatedEntity });
             setLocalEntity(updatedEntity);
         });
-    }
-
-    const handleGenerateImageClick = () => {
-        if (localEntity.imagePrompt) {
-            onGenerateImage(localEntity.imagePrompt, (base64) => {
-                updateField('imageBase64', `data:image/jpeg;base64,${base64}`);
-            });
-        }
-    };
-
-    const handleFileUpload = (file: File | null) => {
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                if (typeof e.target?.result === 'string') {
-                    updateField('imageBase64', e.target.result);
-                }
-            };
-            reader.readAsDataURL(file);
-        } else if (file) {
-            alert('Please select a valid image file.');
-        }
     }
 
     const handleSave = () => {
@@ -340,22 +281,15 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
 
                  <CollapsibleSection title="Card Image">
                     <HelpTooltip title="Card Image" content="This image is used for the background of the entity's card in the game view.\n\n- AI Background Prompt: Write a descriptive prompt for the AI to generate an image.\n- Upload Background: Upload your own image from your device.\n- Clear: Remove the current image." />
-                     <div>
-                        <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">AI Background Prompt</label>
-                        <textarea value={localEntity.imagePrompt || ''} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder={`e.g., A gritty cyberpunk portrait of ${localEntity.name}...`}/>
-                        <div className="flex space-x-2 mt-2">
-                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localEntity.imagePrompt} className="flex-1 bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">
-                                {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
-                            </button>
-                            <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Background</button>
-                            <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null)} className="hidden"/>
-                            {localEntity.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-red-900/50 hover:bg-red-800/50 text-red-300 font-bold py-2 px-4 rounded-md">Clear</button>}
-                        </div>
-                        <ImageCreditEditor
-                          credit={localEntity.imageCredit}
-                          onUpdate={(credit) => updateField('imageCredit', credit)}
-                        />
-                    </div>
+                     <ImageInput 
+                        src={localEntity.src}
+                        prompt={localEntity.imagePrompt}
+                        credit={localEntity.imageCredit}
+                        style={localEntity.imageStyle}
+                        onUpdate={(updates) => setLocalEntity(p => ({...p, ...updates}))}
+                        onGenerateImage={onGenerateImage}
+                        isGeneratingImage={isGeneratingImage}
+                     />
                 </CollapsibleSection>
                 
                  <CollapsibleSection title="Card Styling">
@@ -382,9 +316,9 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({ initialEntity, onSav
                  <div>
                     <h4 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--text-primary)] mb-2">Live Preview</h4>
                     <div className={`relative ${styles.backgroundColor} ${previewClasses.border} ${previewClasses.shadow} h-64 rounded-lg backdrop-blur-sm flex flex-col overflow-hidden`}>
-                        {localEntity.imageBase64 && (
+                        {localEntity.src && (
                             <>
-                                <img src={localEntity.imageBase64} alt={localEntity.name} className="absolute inset-0 w-full h-full object-cover"/>
+                                <img src={localEntity.src} alt={localEntity.name} className="absolute inset-0 w-full h-full object-cover"/>
                                 <div className={`absolute inset-0 ${previewClasses.overlay}`} />
                             </>
                         )}

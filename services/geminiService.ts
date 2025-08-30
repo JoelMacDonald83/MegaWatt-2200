@@ -38,7 +38,7 @@ export const generateImageFromPrompt = async (prompt: string): Promise<string> =
         config: {
           numberOfImages: 1,
           outputMimeType: 'image/jpeg',
-          aspectRatio: '16:9',
+          aspectRatio: '1:1',
         },
     });
 

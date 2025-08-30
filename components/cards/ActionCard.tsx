@@ -13,9 +13,11 @@ export const ActionCard: React.FC<ActionCardProps> = ({ choice, onTrigger }) => 
       onClick={onTrigger}
       className="relative h-48 rounded-lg flex flex-col justify-end overflow-hidden group border-2 border-dashed border-[var(--text-accent)]/30 hover:border-[var(--text-accent)]/80 transition-all duration-300 bg-[var(--bg-panel)]/50"
     >
-      {choice.imageBase64 && (
+      {/* FIX: The 'imageBase64' property does not exist on type 'PlayerChoice'. Changed to 'src'. */}
+      {choice.src && (
         <div className="absolute inset-0">
-          <img src={choice.imageBase64} alt={choice.name} className="w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity duration-300" />
+          {/* FIX: The 'imageBase64' property does not exist on type 'PlayerChoice'. Changed to 'src'. */}
+          <img src={choice.src} alt={choice.name} className="w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity duration-300" />
           <div className="absolute inset-0 bg-black/50" />
         </div>
       )}

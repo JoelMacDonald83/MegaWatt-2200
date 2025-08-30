@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { GameData, PlayerChoice, ChoiceOption, Condition, ChoiceOutcome, Template, ImageCredit } from '../../types';
 import { StyleRadio, StyleSelect, StyleNumberInput } from '../../components/editor/StyleComponents';
@@ -13,6 +11,7 @@ import { PlusIcon } from '../../components/icons/PlusIcon';
 import { HelpTooltip } from '../../components/HelpTooltip';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { ConditionDisplay, OutcomeDisplay } from '../../components/editor/LogicDisplay';
+import { ImageInput } from '../../components/editor/ImageInput';
 
 
 interface ChoiceEditorProps {
@@ -34,41 +33,6 @@ type EditingOutcomeState =
   | { type: 'static'; optionId: string; outcome: ChoiceOutcome | null; outcomeIndex?: number }
   | { type: 'dynamic'; outcome: ChoiceOutcome | null; outcomeIndex?: number }
   | null;
-
-const ImageCreditEditor: React.FC<{
-  credit?: ImageCredit;
-  onUpdate: (credit: ImageCredit) => void;
-}> = ({ credit, onUpdate }) => {
-  const handleChange = (field: keyof ImageCredit, value: string) => {
-    onUpdate({ ...credit, [field]: value });
-  };
-  return (
-    <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
-       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
-        <input 
-            type="text" 
-            placeholder="Artist Name" 
-            value={credit?.artistName || ''}
-            onChange={(e) => handleChange('artistName', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-        <input 
-            type="url" 
-            placeholder="Source URL (e.g., from Unsplash)" 
-            value={credit?.sourceUrl || ''}
-            onChange={(e) => handleChange('sourceUrl', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-        <input 
-            type="url" 
-            placeholder="Artist Socials/Portfolio URL" 
-            value={credit?.socialsUrl || ''}
-            onChange={(e) => handleChange('socialsUrl', e.target.value)}
-            className="w-full bg-[var(--bg-panel)] border border-[var(--border-secondary)] rounded-md p-1.5 text-sm"
-        />
-    </div>
-  )
-};
 
 const PlaceholderSelector: React.FC<{
     gameData: GameData;
@@ -208,8 +172,6 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
     const [templateToAdd, setTemplateToAdd] = useState('');
     const [componentToAdd, setComponentToAdd] = useState('');
     const [componentToExclude, setComponentToExclude] = useState('');
-    const bgInputRef = useRef<HTMLInputElement>(null);
-    const fgInputRef = useRef<HTMLInputElement>(null);
     const optionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
@@ -315,28 +277,6 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
         });
     };
 
-    const handleGenerateImageClick = () => {
-        if (localChoice.imagePrompt) {
-            onGenerateImage(localChoice.imagePrompt, (base64) => {
-                updateField('imageBase64', `data:image/jpeg;base64,${base64}`);
-            });
-        }
-    };
-
-    const handleFileUpload = (file: File | null, field: 'imageBase64' | 'foregroundImageBase64') => {
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                if (typeof e.target?.result === 'string') {
-                    updateField(field, e.target.result);
-                }
-            };
-            reader.readAsDataURL(file);
-        } else if (file) {
-            alert('Please select a valid image file.');
-        }
-    }
-    
     const handleSaveCondition = (condition: Condition) => {
         debugService.log('ChoiceEditor: Saving condition from ConditionEditor', { condition, editingConditionState });
         if (!editingConditionState) return;
@@ -554,25 +494,15 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                         </div>
                         <textarea value={localChoice.description} onChange={e => updateField('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">AI Background Prompt</label>
-                            <HelpTooltip title="AI Background Prompt" content="Write a detailed, descriptive prompt for the AI to generate a background image for this scene. Mention themes (e.g., cyberpunk, noir), colors, lighting, and subject matter for best results." />
-                        </div>
-                        <textarea value={localChoice.imagePrompt} onChange={e => updateField('imagePrompt', e.target.value)} rows={2} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2" placeholder="e.g., A lone figure overlooking a vast cyberpunk city at night..."/>
-                        <div className="flex space-x-2 mt-2">
-                            <button onClick={handleGenerateImageClick} disabled={isGeneratingImage || !localChoice.imagePrompt} className="flex-1 bg-[var(--color-action-primary)] hover:opacity-90 disabled:bg-[var(--bg-panel-light)] text-[var(--text-on-accent)] font-bold py-2 px-4 rounded-md">
-                                {isGeneratingImage ? 'Generating...' : 'Generate with AI'}
-                            </button>
-                            <button onClick={() => bgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Background</button>
-                            <input type="file" accept="image/*" ref={bgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'imageBase64')} className="hidden"/>
-                            {localChoice.imageBase64 && <button onClick={() => updateField('imageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
-                        </div>
-                        <ImageCreditEditor
-                            credit={localChoice.imageCredit}
-                            onUpdate={(credit) => updateField('imageCredit', credit)}
-                        />
-                    </div>
+                     <ImageInput 
+                        src={localChoice.src}
+                        prompt={localChoice.imagePrompt}
+                        credit={localChoice.imageCredit}
+                        style={localChoice.imageStyle}
+                        onUpdate={(updates) => setLocalChoice(p => ({...p, ...updates}))}
+                        onGenerateImage={onGenerateImage}
+                        isGeneratingImage={isGeneratingImage}
+                     />
                 </CollapsibleSection>
                 
                 <CollapsibleSection title="Scene Styling">
@@ -597,28 +527,33 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
 
                 <CollapsibleSection title="Foreground Image">
                     <HelpTooltip title="Foreground Image" content="Upload an image (ideally with a transparent background, like a PNG) to be layered on top of the background. This is great for character sprites, objects, or UI elements." />
-                    <div className="flex space-x-2">
-                        <button onClick={() => fgInputRef.current?.click()} className="flex-1 bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold py-2 px-4 rounded-md">Upload Foreground</button>
-                        <input type="file" accept="image/*" ref={fgInputRef} onChange={e => handleFileUpload(e.target.files?.[0] ?? null, 'foregroundImageBase64')} className="hidden"/>
-                        {localChoice.foregroundImageBase64 && <button onClick={() => updateField('foregroundImageBase64', undefined)} className="bg-[var(--color-action-destructive-bg)] hover:opacity-90 text-[var(--color-action-destructive-text)] font-bold py-2 px-4 rounded-md">Clear</button>}
-                    </div>
-                    {localChoice.foregroundImageBase64 && (
-                        <>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                                <StyleSelect label="Position" help="The horizontal position of the foreground image." value={styles.fg.position} onChange={e => updateFgStyle('position', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
-                                <StyleSelect label="Size" help="The relative size of the foreground image." value={styles.fg.size} onChange={e => updateFgStyle('size', e.target.value)}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></StyleSelect>
-                                <div></div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <StyleSelect wrapperClassName="col-span-2" label="Animation" help="How the foreground image appears on screen." value={styles.fg.animation} onChange={e => updateFgStyle('animation', e.target.value)}><option value="none">None</option><option value="fade-in">Fade In</option><option value="slide-in-left">Slide-in Left</option><option value="slide-in-right">Slide-in Right</option><option value="zoom-in">Zoom In</option></StyleSelect>
-                                    <StyleNumberInput label="Duration (s)" value={styles.fg.animationDuration} onChange={e => updateFgStyle('animationDuration', e.target.valueAsNumber)} />
-                                    <StyleNumberInput label="Delay (s)" value={styles.fg.animationDelay} onChange={e => updateFgStyle('animationDelay', e.target.valueAsNumber)} />
-                                </div>
+                    <ImageInput 
+                        src={localChoice.foregroundImageSrc}
+                        credit={localChoice.foregroundImageCredit}
+                        style={localChoice.foregroundImageStyle}
+                        onUpdate={(updates) => {
+                            const remappedUpdates = {
+                                foregroundImageSrc: updates.src,
+                                foregroundImageCredit: updates.credit,
+                                foregroundImageStyle: updates.style,
+                            };
+                            setLocalChoice(p => ({...p, ...remappedUpdates}))
+                        }}
+                        onGenerateImage={onGenerateImage}
+                        isGeneratingImage={isGeneratingImage}
+                        showPrompt={false}
+                    />
+                    {localChoice.foregroundImageSrc && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                            <StyleSelect label="Position" help="The horizontal position of the foreground image." value={styles.fg.position} onChange={e => updateFgStyle('position', e.target.value)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></StyleSelect>
+                            <StyleSelect label="Size" help="The relative size of the foreground image." value={styles.fg.size} onChange={e => updateFgStyle('size', e.target.value)}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></StyleSelect>
+                            <div></div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <StyleSelect wrapperClassName="col-span-2" label="Animation" help="How the foreground image appears on screen." value={styles.fg.animation} onChange={e => updateFgStyle('animation', e.target.value)}><option value="none">None</option><option value="fade-in">Fade In</option><option value="slide-in-left">Slide-in Left</option><option value="slide-in-right">Slide-in Right</option><option value="zoom-in">Zoom In</option></StyleSelect>
+                                <StyleNumberInput label="Duration (s)" value={styles.fg.animationDuration} onChange={e => updateFgStyle('animationDuration', e.target.valueAsNumber)} />
+                                <StyleNumberInput label="Delay (s)" value={styles.fg.animationDelay} onChange={e => updateFgStyle('animationDelay', e.target.valueAsNumber)} />
                             </div>
-                            <ImageCreditEditor
-                                credit={localChoice.foregroundImageCredit}
-                                onUpdate={(credit) => updateField('foregroundImageCredit', credit)}
-                            />
-                        </>
+                        </div>
                     )}
                 </CollapsibleSection>
                 
@@ -933,7 +868,7 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
 
                 <CollapsibleSection title="Live Preview">
                     <div className="relative aspect-video w-full max-w-lg bg-[var(--bg-main)] rounded-lg border border-[var(--border-secondary)] overflow-hidden">
-                        {localChoice.imageBase64 && <img src={localChoice.imageBase64} className={`absolute inset-0 w-full h-full object-cover transition-all ${previewBgEffectClass}`} />}
+                        {localChoice.src && <img src={localChoice.src} className={`absolute inset-0 w-full h-full object-cover transition-all ${previewBgEffectClass}`} />}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
                         <div className={`absolute inset-0 flex p-2 ${previewPositionClasses} ${previewFlexAlignClasses}`}>
                             <div className={`${previewWidthClass} ${previewTextAlignClasses}`}>
@@ -951,11 +886,11 @@ export const ChoiceEditor: React.FC<ChoiceEditorProps> = ({ initialChoice, onSav
                                 )}
                             </div>
                         </div>
-                        {localChoice.foregroundImageBase64 && (
+                        {localChoice.foregroundImageSrc && (
                             <div className={`absolute inset-0 flex items-center p-4 ${previewFgPositionClass}`}>
                                 <img 
                                     key={previewFgAnimationKey}
-                                    src={localChoice.foregroundImageBase64} 
+                                    src={localChoice.foregroundImageSrc} 
                                     className={`object-contain ${previewFgSizeClass} max-h-full ${previewFgAnimationClass}`}
                                     style={previewFgAnimationStyle}
                                     alt="Foreground Preview"/>

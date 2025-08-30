@@ -1,7 +1,9 @@
+
 import React from 'react';
 import { Modal } from './Modal';
 import { useSettings } from '../contexts/SettingsContext';
 import { EditorTheme, EditorFontSize } from '../types';
+import { ToggleSwitch } from './ToggleSwitch';
 
 const StyleRadio: React.FC<{
   label: string;
@@ -42,6 +44,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const handleUiScaleChange = (scale: number) => {
     setSettings({ ...settings, uiScale: scale });
   };
+  
+  const handleAutosaveFileChange = (enabled: boolean) => {
+    setSettings({ ...settings, autosaveFileDownloadEnabled: enabled });
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Editor Settings">
@@ -81,6 +87,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     value={settings.uiScale}
                     onChange={(e) => handleUiScaleChange(parseFloat(e.target.value))}
                     className="w-full h-2 bg-[var(--bg-input)] rounded-lg appearance-none cursor-pointer accent-[var(--bg-active)] mt-2"
+                />
+            </div>
+            <div className="pt-6 border-t border-[var(--border-primary)]">
+                <ToggleSwitch
+                    label="Enable Autosave File Download"
+                    enabled={!!settings.autosaveFileDownloadEnabled}
+                    onChange={handleAutosaveFileChange}
+                    help="When enabled, the app will automatically download a backup file of your project shortly after you make changes. This can be useful, but may also fill up your Downloads folder."
                 />
             </div>
         </div>

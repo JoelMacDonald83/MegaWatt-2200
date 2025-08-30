@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { Modal } from '../Modal';
 import { Entity, GameData, Template, AttributeDefinition } from '../../types';
@@ -97,8 +98,10 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({ isOpen, on
             <div className="flex flex-col sm:flex-row gap-6">
                 <div className="w-full sm:w-1/3 flex-shrink-0">
                     <div className="aspect-square bg-[var(--bg-input)] rounded-lg overflow-hidden">
-                        {entity.imageBase64 ? (
-                            <img src={entity.imageBase64} alt={entity.name} className="w-full h-full object-cover" />
+                        {/* FIX: The 'imageBase64' property does not exist on type 'Entity'. Changed to 'src'. */}
+                        {entity.src ? (
+                            // FIX: The 'imageBase64' property does not exist on type 'Entity'. Changed to 'src'.
+                            <img src={entity.src} alt={entity.name} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-[var(--text-tertiary)]">No Image</div>
                         )}

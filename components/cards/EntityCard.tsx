@@ -1,7 +1,26 @@
 
 import React, { useMemo } from 'react';
-import type { Entity } from '../../types';
+import type { Entity, ImageStyle } from '../../types';
 import { CreditDisplay } from '../CreditDisplay';
+
+const imageStyleToCss = (style?: ImageStyle): React.CSSProperties => {
+    if (!style) return {};
+    const filters = [
+        style.filterGrayscale ? `grayscale(${style.filterGrayscale})` : '',
+        style.filterSepia ? `sepia(${style.filterSepia})` : '',
+        style.filterBlur ? `blur(${style.filterBlur}px)` : '',
+        style.filterBrightness ? `brightness(${style.filterBrightness})` : '',
+        style.filterContrast ? `contrast(${style.filterContrast})` : '',
+    ].filter(Boolean).join(' ');
+
+    return {
+        objectFit: style.objectFit,
+        objectPosition: style.objectPosition,
+        opacity: style.opacity,
+        borderRadius: style.borderRadius ? `${style.borderRadius}px` : undefined,
+        filter: filters || undefined,
+    };
+};
 
 interface EntityCardProps {
   entity: Entity;
@@ -10,7 +29,7 @@ interface EntityCardProps {
 export const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
   const styles = useMemo(() => {
     const s = entity.styles || {};
-    const hasBgImage = !!entity.imageBase64;
+    const hasBgImage = !!entity.src;
     return {
       borderColor: s.borderColor || 'cyan-500',
       borderWidth: s.borderWidth || 'md',
@@ -19,7 +38,7 @@ export const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
       backgroundColor: s.backgroundColor || 'bg-[var(--bg-panel)]/50',
       overlay: s.backgroundOverlayStrength || (hasBgImage ? 'medium' : 'none'),
     };
-  }, [entity.styles, entity.imageBase64]);
+  }, [entity.styles, entity.src]);
 
   const cardClasses = useMemo(() => {
     return [
@@ -35,9 +54,9 @@ export const EntityCard: React.FC<EntityCardProps> = ({ entity }) => {
 
   return (
     <div className={`relative h-48 rounded-lg flex flex-col justify-end overflow-hidden backdrop-blur-sm transition-all duration-300 ${cardClasses}`}>
-      {entity.imageBase64 && (
+      {entity.src && (
         <div className="absolute inset-0">
-          <img src={entity.imageBase64} alt={entity.name} className="w-full h-full object-cover" />
+          <img src={entity.src} alt={entity.name} className="w-full h-full" style={imageStyleToCss(entity.imageStyle)} />
           <div className={`absolute inset-0 ${overlayClass}`} />
         </div>
       )}
