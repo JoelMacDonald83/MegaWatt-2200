@@ -67,7 +67,7 @@ export const SimulationHeader: React.FC<SimulationHeaderProps> = ({
                      <button onClick={onRestart} className="flex items-center gap-2 px-3 py-1.5 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
                         <ArrowPathIcon className="w-5 h-5" /> Restart
                     </button>
-                     <button onClick={onExit} className="flex items-center gap-2 px-3 py-1.5 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors bg-red-600/20 hover:bg-red-600/40 text-red-400">
+                     <button onClick={onExit} className="flex items-center gap-2 px-3 py-1.5 text-[length:var(--font-size-sm)] font-medium rounded-md transition-colors bg-red-600/20 hover:bg-red-600/40 text-[var(--text-danger)]">
                         <ArrowLeftOnRectangleIcon className="w-5 h-5" /> Exit Simulation
                     </button>
                 </div>

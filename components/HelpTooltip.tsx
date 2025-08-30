@@ -14,7 +14,7 @@ export const HelpTooltip: React.FC<HelpTooltipProps> = ({ title, content }) => {
     <>
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(true); }}
-        className="inline-flex items-center justify-center text-gray-500 hover:text-cyan-400 transition-colors"
+        className="inline-flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-accent)] transition-colors"
         aria-label={`Help for ${title}`}
       >
         <QuestionMarkCircleIcon className="w-4 h-4" />

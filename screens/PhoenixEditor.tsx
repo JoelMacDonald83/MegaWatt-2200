@@ -88,7 +88,10 @@ const ImageCreditEditor: React.FC<{
   };
   return (
     <div className="mt-2 p-2 border-t border-[var(--border-secondary)] space-y-2">
-       <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
+       <div className="flex items-center gap-2">
+          <h5 className="text-xs font-semibold text-[var(--text-secondary)]">Image Credits (Optional)</h5>
+          <HelpTooltip title="Image Credits" content="Optionally, provide credit for the image. This information will be accessible to players who view the image." />
+       </div>
         <input 
             type="text" 
             placeholder="Artist Name" 
@@ -175,6 +178,10 @@ const ShowcaseImageEditor: React.FC<{
                             <div className="w-24 h-24 bg-[var(--bg-input)] rounded-md flex items-center justify-center text-[var(--text-tertiary)] text-xs flex-shrink-0">No Image</div>
                         }
                         <div className="flex-grow space-y-2">
+                             <div className="flex items-center gap-2">
+                                <label className="text-sm font-medium text-[var(--text-secondary)]">AI Image Prompt</label>
+                                <HelpTooltip title="AI Image Prompt" content="Write a detailed prompt for the AI to generate an image. This prompt is used when you click the 'Generate' button." />
+                             </div>
                              <textarea 
                                 value={image.prompt}
                                 onChange={(e) => handleUpdateImage(image.id, { prompt: e.target.value })}
@@ -183,12 +190,18 @@ const ShowcaseImageEditor: React.FC<{
                                 className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2 text-sm"
                             />
                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => handleGenerateClick(image)} disabled={isGenerating === 'image' || !image.prompt} className="bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel)] text-[var(--text-on-accent)] text-sm font-bold py-2 px-3 rounded-md">
-                                    {isGenerating === 'image' ? "Generating..." : "Generate"}
-                                </button>
-                                <label htmlFor={`showcase-upload-${image.id}`} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] flex items-center justify-center text-[var(--text-primary)] text-sm font-bold py-2 px-3 rounded-md cursor-pointer">
-                                    Upload
-                                </label>
+                                <div className="relative">
+                                    <button onClick={() => handleGenerateClick(image)} disabled={isGenerating === 'image' || !image.prompt} className="w-full bg-[var(--text-accent-bright)] hover:opacity-90 disabled:bg-[var(--bg-panel)] text-[var(--text-on-accent)] text-sm font-bold py-2 px-3 rounded-md">
+                                        {isGenerating === 'image' ? "Generating..." : "Generate"}
+                                    </button>
+                                    <div className="absolute top-1/2 -right-1.5 -translate-y-1/2"><HelpTooltip title="Generate Image" content="Uses the prompt on the left to generate a new image using AI. Replaces the current image." /></div>
+                                </div>
+                                 <div className="relative">
+                                    <label htmlFor={`showcase-upload-${image.id}`} className="w-full bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] flex items-center justify-center text-[var(--text-primary)] text-sm font-bold py-2 px-3 rounded-md cursor-pointer">
+                                        Upload
+                                    </label>
+                                    <div className="absolute top-1/2 -right-1.5 -translate-y-1/2"><HelpTooltip title="Upload Image" content="Upload an image from your computer to use for this showcase slot." /></div>
+                                </div>
                                 <input 
                                     id={`showcase-upload-${image.id}`}
                                     type="file"
@@ -201,6 +214,7 @@ const ShowcaseImageEditor: React.FC<{
                         <div className="flex flex-col justify-between items-center">
                              <div className="flex flex-col">
                                 <button onClick={() => handleMoveImage(index, 'up')} disabled={index === 0} className="p-1 disabled:opacity-30"><ArrowUpIcon className="w-4 h-4" /></button>
+                                <div className="relative">
                                 <button
                                     onClick={() => onSetCoverImage(image.id)}
                                     className={`p-1 rounded-full transition-colors ${cardCoverImageId === image.id ? 'text-[var(--text-warning)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--text-warning)]/20'}`}
@@ -208,6 +222,8 @@ const ShowcaseImageEditor: React.FC<{
                                 >
                                     <StarIcon className="w-4 h-4" fill={cardCoverImageId === image.id ? 'currentColor' : 'none'} stroke="currentColor" />
                                 </button>
+                                <div className="absolute top-1/2 -right-3 -translate-y-1/2"><HelpTooltip title="Set as Cover Image" content="Designates this image as the main cover image for the game's card in the launcher." /></div>
+                                </div>
                                 <button onClick={() => handleMoveImage(index, 'down')} disabled={index === images.length - 1} className="p-1 disabled:opacity-30"><ArrowDownIcon className="w-4 h-4" /></button>
                             </div>
                             <button onClick={() => handleRemoveImage(image.id)} className="p-1"><TrashIcon className="w-4 h-4 text-[var(--text-danger)]/80 hover:text-[var(--text-danger)]"/></button>
@@ -462,8 +478,8 @@ const GameEditor: React.FC<{
     const [draggedChoice, setDraggedChoice] = useState<{ choiceId: string; sourceChunkId: string } | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ chunkId: string; index: number } | null>(null);
 
-    const handleColonyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onCommitGameChange({ ...gameData, colonyName: e.target.value });
+    const handleGameTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        onCommitGameChange({ ...gameData, gameTitle: e.target.value });
     };
     
     const updateMenuSettings = (field: keyof GameData['menuSettings'], value: any) => {
@@ -759,10 +775,25 @@ const GameEditor: React.FC<{
                     <h1 className="text-[length:var(--font-size-3xl)] font-bold text-[var(--text-accent)] mb-6">Game Menu Settings for {gameData.gameTitle}</h1>
                      <div className="max-w-2xl space-y-8">
                         <CollapsibleSection title="Core Details">
-                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Colony Name</label><input type="text" value={gameData.colonyName} onChange={handleColonyNameChange} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
-                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Menu Description</label><textarea value={gameData.menuSettings.description} onChange={e => updateMenuSettings('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
                             <div>
-                                <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Tags</label>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Game Title</label>
+                                    <HelpTooltip title="Game Title" content="The main title of your game project as it appears in the launcher and editor lists." />
+                                </div>
+                                <input type="text" value={gameData.gameTitle} onChange={handleGameTitleChange} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Menu Description</label>
+                                    <HelpTooltip title="Menu Description" content="This is the main description for your game that players will see on its dedicated menu screen before starting a simulation." />
+                                </div>
+                                <textarea value={gameData.menuSettings.description} onChange={e => updateMenuSettings('description', e.target.value)} rows={4} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Tags</label>
+                                    <HelpTooltip title="Tags" content="Add tags to categorize your game (e.g., Sci-Fi, Horror, Narrative). These are displayed on the game's menu screen." />
+                                </div>
                                 <div className="flex flex-wrap gap-2 mb-2">{(gameData.menuSettings.tags || []).map(tag => <span key={tag} className="flex items-center bg-[var(--text-accent-dark)]/50 text-[var(--text-accent)] text-xs font-medium px-2 py-1 rounded-full">{tag}<button onClick={() => handleRemoveMenuTag(tag)} className="ml-1.5 -mr-0.5 w-4 h-4 rounded-full text-[var(--text-accent)] hover:bg-red-500/50">&times;</button></span>)}</div>
                                 <div className="flex gap-2"><input type="text" placeholder="Add a tag..." value={newMenuTag} onChange={e => setNewMenuTag(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMenuTag(); } }} className="flex-grow bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/><button onClick={handleAddMenuTag} className="bg-[var(--bg-panel-light)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] font-bold px-4 rounded">Add</button></div>
                             </div>
@@ -779,8 +810,20 @@ const GameEditor: React.FC<{
                            />
                         </CollapsibleSection>
                         <CollapsibleSection title="News & Credits">
-                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">News & Updates</label><NewsListEditor news={gameData.menuSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteNewsItem} /></div>
-                            <div><label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)] mb-1">Credits</label><textarea value={gameData.menuSettings.credits} onChange={e => updateMenuSettings('credits', e.target.value)} rows={6} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/></div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">News & Updates</label>
+                                    <HelpTooltip title="News & Updates" content="Manage news articles and updates for this specific game. These will be shown on the game's menu screen." />
+                                </div>
+                                <NewsListEditor news={gameData.menuSettings.news} onAdd={() => setEditingNewsItem({ isNew: true })} onEdit={setEditingNewsItem} onDelete={handleDeleteNewsItem} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <label className="block text-[length:var(--font-size-sm)] font-medium text-[var(--text-secondary)]">Credits</label>
+                                    <HelpTooltip title="Credits" content="Write the credits for your game. This can include your name, inspirations, or thank-yous. Supports Markdown for basic formatting." />
+                                </div>
+                                <textarea value={gameData.menuSettings.credits} onChange={e => updateMenuSettings('credits', e.target.value)} rows={6} className="w-full bg-[var(--bg-input)] border border-[var(--border-secondary)] rounded-md p-2"/>
+                            </div>
                         </CollapsibleSection>
                      </div>
                 </div>

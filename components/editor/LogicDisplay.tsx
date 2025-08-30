@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 import type { Condition, GameData, ChoiceOutcome } from '../../types';
 import { UserIcon } from '../icons/UserIcon';
@@ -99,7 +100,7 @@ export const OutcomeDisplay: React.FC<{outcome: ChoiceOutcome, gameData: GameDat
             const template = gameData.templates.find(t => t.id === outcome.templateId);
             return (
                 <>
-                    <LogicChip icon={<PlusIcon className="text-green-400"/>} className="text-green-400 font-bold">CREATE</LogicChip>
+                    <LogicChip icon={<PlusIcon className="text-[var(--text-success)]"/>} className="text-[var(--text-success)] font-bold">CREATE</LogicChip>
                     <LogicChip className="text-[var(--text-primary)] font-medium">{outcome.name}</LogicChip>
                     <LogicChip>(from <span className="font-semibold">{template?.name || 'Unknown'}</span>)</LogicChip>
                 </>
@@ -118,7 +119,7 @@ export const OutcomeDisplay: React.FC<{outcome: ChoiceOutcome, gameData: GameDat
 
             return (
                 <>
-                    <LogicChip icon={<PencilIcon className="text-yellow-400"/>} className="text-yellow-400 font-bold">UPDATE</LogicChip>
+                    <LogicChip icon={<PencilIcon className="text-[var(--text-warning)]"/>} className="text-[var(--text-warning)] font-bold">UPDATE</LogicChip>
                     <LogicChip icon={<UserIcon />}>{entityName}</LogicChip>
                     <LogicChip icon={<TagIcon />} className="text-[var(--text-primary)] font-medium">{attrName}</LogicChip>
                     <OperatorChip op="to" />
