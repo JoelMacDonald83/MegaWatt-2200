@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PhoenixEditor } from './screens/PhoenixEditor';
 import { MegaWattGame } from './screens/MegaWattGame';
@@ -27,10 +28,16 @@ const TEMPLATE_COLONY_STATS_ID = 'template_colony_stats_1';
 const TEMPLATE_LOCATION_ID = 'template_location_1';
 const TEMPLATE_RESOURCE_ID = 'template_resource_1';
 const TEMPLATE_DATA_LOG_ID = 'template_data_log_1';
+const TEMPLATE_CREW_QUARTERS_ID = 'template_facility_quarters';
+const TEMPLATE_SECURITY_TEAM_ID = 'template_char_security';
+const TEMPLATE_MEDIC_ID = 'template_char_medic';
+
 
 const COMPONENT_SKILL_HACKING_ID = 'comp_skill_hacking_1';
 const COMPONENT_SKILL_ACCOUNTING_ID = 'comp_skill_accounting_1';
 const COMPONENT_SKILL_ENGINEERING_ID = 'comp_skill_engineering_1';
+const COMPONENT_WEAPONS_TRAINING_ID = 'comp_skill_weapons';
+const COMPONENT_MEDICAL_TRAINING_ID = 'comp_skill_medical';
 
 
 // ATTRIBUTES
@@ -46,6 +53,10 @@ const ATTR_LOG_CONTENT_ID = 'attr_log_content_1';
 const ATTR_ANALYSIS_ID = 'attr_analysis_1';
 const ATTR_INVESTIGATOR_ID = 'attr_investigator_1';
 const ATTR_OP_MODE_ID = 'attr_op_mode_1';
+const ATTR_CAPACITY_ID = 'attr_capacity';
+const ATTR_MORALE_EFFECT_ID = 'attr_morale_effect';
+const ATTR_WEAPON_PROFICIENCY_ID = 'attr_weapon_prof';
+const ATTR_FIELD_EXPERIENCE_ID = 'attr_field_exp';
 
 
 // CHOICES
@@ -57,6 +68,9 @@ const CHOICE_GAMMA_ANOMALY_START = 'choice_gamma_1';
 const CHOICE_GAMMA_ASSIGN_INVESTIGATOR = 'choice_gamma_2';
 const CHOICE_GAMMA_TUNNEL_ENTRY = 'choice_gamma_3';
 const CHOICE_GAMMA_CRYSTAL_FOUND = 'choice_gamma_4';
+const CHOICE_COLONY_STATUS_REPORT = 'choice_colony_1';
+const CHOICE_QUARTERS_EXPANSION = 'choice_colony_2';
+const CHOICE_SECURITY_PATROL = 'choice_colony_3';
 
 
 // ENTITIES
@@ -64,6 +78,10 @@ const ENTITY_GEOTHERMAL_VENT_ID = 'ps_1';
 const ENTITY_JAX_ID = 'char_1';
 const ENTITY_RILEY_ID = 'char_3';
 const ENTITY_SECTOR_GAMMA_TUNNELS_ID = 'loc_1';
+const ENTITY_KAELEN_ID = 'char_4';
+const ENTITY_DR_ELARA_ID = 'char_5';
+const ENTITY_SGT_REX_ID = 'char_6';
+const ENTITY_CREW_QUARTERS_ALPHA_ID = 'facility_1';
 
 const SHOWCASE_IMAGE_INITIAL_1 = 'img_initial_1';
 
@@ -113,7 +131,13 @@ const initialGameData: GameData = {
         name: 'Sector Gamma Anomaly',
         description: 'A short quest to investigate the power fluctuations.',
         choiceIds: [CHOICE_GAMMA_ANOMALY_START, CHOICE_GAMMA_ASSIGN_INVESTIGATOR, CHOICE_GAMMA_TUNNEL_ENTRY, CHOICE_GAMMA_CRYSTAL_FOUND],
-    }
+    },
+    {
+        id: `chunk_colony_${Date.now()}`,
+        name: 'Colony Management',
+        description: 'Choices related to the day-to-day operation and expansion of the colony.',
+        choiceIds: [CHOICE_COLONY_STATUS_REPORT, CHOICE_QUARTERS_EXPANSION, CHOICE_SECURITY_PATROL],
+    },
   ],
   allChoices: [
     // --- INTRO CHUNK ---
@@ -213,10 +237,68 @@ const initialGameData: GameData = {
             { id: 'gamma_opt_1', text: "Carefully extract the crystal", outcomes: [{ type: 'create_entity', templateId: TEMPLATE_RESOURCE_ID, name: 'Anomalous Crystal', attributeValues: { [ATTR_ANALYSIS_ID]: 'Highly unstable, exhibits exotic energy properties.' } }] },
             { id: 'gamma_opt_2', text: "Smash it", outcomes: [] },
         ]
+    },
+    // --- COLONY MANAGEMENT CHUNK ---
+    {
+      id: CHOICE_COLONY_STATUS_REPORT,
+      name: 'Colony Status Report',
+      description: 'The morning reports flicker across your console. Life support is stable, power output is nominal, and the latest hydroponics yield is within projections. A quiet day, for once.',
+      imagePrompt: 'A calm, futuristic command center with holographic displays showing green, stable readouts. The sun is rising through a large viewport, illuminating the room.',
+      choiceType: 'static',
+      nextChoiceId: null,
+      styles: { textPosition: 'middle', textAlign: 'left', textWidth: 'medium' }
+    },
+    {
+      id: CHOICE_QUARTERS_EXPANSION,
+      name: 'Expand Crew Quarters',
+      description: 'The current crew quarters are at maximum capacity. Expanding them would improve morale but will divert resources from other critical projects.',
+      imagePrompt: 'Construction drones welding beams inside a large, unfinished habitat module. Sparks fly in the zero-G environment.',
+      prompt: 'Approve the expansion of Crew Quarters Alpha?',
+      choiceType: 'static',
+      staticOptions: [
+        {
+            id: 'cq_opt_1',
+            text: "Approve. Our people need space.",
+            outcomes: [{
+                type: 'update_entity',
+                targetEntityId: ENTITY_CREW_QUARTERS_ALPHA_ID,
+                attributeId: ATTR_CAPACITY_ID,
+                value: 75
+            }, {
+                type: 'update_entity',
+                targetEntityId: ENTITY_CREW_QUARTERS_ALPHA_ID,
+                attributeId: ATTR_MORALE_EFFECT_ID,
+                value: 'Positive'
+            }]
+        },
+        { id: 'cq_opt_2', text: "Deny. Resources are too tight.", outcomes: [] }
+      ]
+    },
+    {
+        id: CHOICE_SECURITY_PATROL,
+        name: 'Assign Security Patrol',
+        description: 'There have been reports of strange noises from the outer maintenance shafts. A security patrol should investigate.',
+        imagePrompt: 'A dark, grimy maintenance corridor, with a single flickering light overhead. Steam vents from pipes along the walls.',
+        prompt: 'Who will lead the patrol?',
+        choiceType: 'dynamic_from_template',
+        dynamicConfig: {
+            sourceTemplateIds: [TEMPLATE_SECURITY_TEAM_ID],
+            optionTemplate: { text: 'Dispatch {entity.name}' },
+            outcomeTemplates: [{
+                type: 'create_entity',
+                templateId: TEMPLATE_DATA_LOG_ID,
+                name: 'Patrol Log: Outer Shafts',
+                attributeValues: {
+                    [ATTR_INVESTIGATOR_ID]: '<chosen_entity_id>',
+                    [ATTR_LOG_CONTENT_ID]: 'Patrol dispatched to investigate anomalous sounds in the outer maintenance shafts.'
+                }
+            }],
+            nextChoiceId: null,
+        }
     }
   ],
   templates: [
-    { id: TEMPLATE_CHARACTER_ID, name: 'Character', description: 'A person or operative in the colony.', tags: ['personnel'], isComponent: false, attributes: [ { id: ATTR_BACKSTORY_ID, name: 'Backstory', type: 'textarea' }, { id: ATTR_ROLE_ID, name: 'Role', type: 'string' }], includedComponentIds: [COMPONENT_SKILL_HACKING_ID] },
+    { id: TEMPLATE_CHARACTER_ID, name: 'Character', description: 'A person or operative in the colony.', tags: ['personnel'], isComponent: false, attributes: [ { id: ATTR_BACKSTORY_ID, name: 'Backstory', type: 'textarea' }, { id: ATTR_ROLE_ID, name: 'Role', type: 'string' }], includedComponentIds: [COMPONENT_SKILL_HACKING_ID, COMPONENT_SKILL_ENGINEERING_ID] },
     { id: TEMPLATE_POWER_SOURCE_ID, name: 'Power Source', description: 'A facility that generates power.', tags: ['utility', 'location'], isComponent: false, attributes: [ { id: ATTR_DESCRIPTION_ID, name: 'Description', type: 'textarea' }, { id: ATTR_OPERATOR_ID, name: 'Operator', type: 'entity_reference', referencedTemplateId: TEMPLATE_CHARACTER_ID }, { id: ATTR_OP_MODE_ID, name: 'Operational Mode', type: 'string', isPlayerEditable: true, playerEditOptions: ['Normal Output', 'Overdrive', 'Emergency Shutdown'] }]},
     { id: TEMPLATE_FACILITY_ID, name: 'Facility', description: 'A structural installation.', tags: ['location'], isComponent: false, attributes: [ { id: ATTR_STATUS_ID, name: 'Status Report', type: 'textarea' }]},
     { id: TEMPLATE_DRONE_ID, name: 'Drone System', description: 'An automated system.', tags: ['utility'], isComponent: false, attributes: [ { id: ATTR_STATUS_ID, name: 'Status Report', type: 'textarea' }]},
@@ -224,17 +306,27 @@ const initialGameData: GameData = {
     { id: TEMPLATE_RESOURCE_ID, name: 'Resource', description: 'A collectible or analyzable resource.', tags: ['item'], isComponent: false, attributes: [ { id: ATTR_ANALYSIS_ID, name: 'Analysis', type: 'textarea' }]},
     { id: TEMPLATE_DATA_LOG_ID, name: 'Data Log', description: 'A log or journal entry.', tags: ['lore'], isComponent: false, attributes: [ { id: ATTR_INVESTIGATOR_ID, name: 'Author', type: 'entity_reference', referencedTemplateId: TEMPLATE_CHARACTER_ID }, { id: ATTR_LOG_CONTENT_ID, name: 'Content', type: 'textarea' }]},
     { id: TEMPLATE_COLONY_STATS_ID, name: 'Colony Stats', description: 'High-level status for the colony.', tags: ['system'], isComponent: false, attributes: [ { id: ATTR_POWER_SOURCE_ID, name: 'Primary Power Source', type: 'entity_reference', referencedTemplateId: TEMPLATE_POWER_SOURCE_ID }]},
+    { id: TEMPLATE_CREW_QUARTERS_ID, name: 'Crew Quarters', description: 'Living quarters for colony personnel.', tags: ['facility', 'personnel'], isComponent: false, parentId: TEMPLATE_FACILITY_ID, attributes: [ { id: ATTR_CAPACITY_ID, name: 'Capacity', type: 'number' }, { id: ATTR_MORALE_EFFECT_ID, name: 'Morale Effect', type: 'string' } ] },
+    { id: TEMPLATE_SECURITY_TEAM_ID, name: 'Security Officer', description: 'Personnel trained for security and defense operations.', tags: ['personnel', 'security'], isComponent: false, parentId: TEMPLATE_CHARACTER_ID, includedComponentIds: [COMPONENT_WEAPONS_TRAINING_ID], attributes: [ { id: ATTR_FIELD_EXPERIENCE_ID, name: 'Field Experience', type: 'textarea' } ] },
+    { id: TEMPLATE_MEDIC_ID, name: 'Medical Officer', description: 'Personnel trained for medical operations.', tags: ['personnel', 'medical'], isComponent: false, parentId: TEMPLATE_CHARACTER_ID, includedComponentIds: [COMPONENT_MEDICAL_TRAINING_ID], attributes: [] },
     // --- Components ---
     { id: COMPONENT_SKILL_HACKING_ID, name: 'Skill: Hacking', description: 'For characters who can bypass digital security.', tags: ['skill'], isComponent: true, attributes: [ { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' }]},
     { id: COMPONENT_SKILL_ACCOUNTING_ID, name: 'Skill: Accounting', description: 'For characters who can manage finances.', tags: ['skill'], isComponent: true, attributes: [ { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' }, { id: ATTR_SKILL_SPEC_ID, name: 'Specialization', type: 'string'}]},
-    { id: COMPONENT_SKILL_ENGINEERING_ID, name: 'Skill: Engineering', description: 'For characters who can repair and analyze hardware.', tags: ['skill'], isComponent: true, attributes: [ { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' }]}
+    { id: COMPONENT_SKILL_ENGINEERING_ID, name: 'Skill: Engineering', description: 'For characters who can repair and analyze hardware.', tags: ['skill'], isComponent: true, attributes: [ { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' }]},
+    { id: COMPONENT_WEAPONS_TRAINING_ID, name: 'Skill: Weapons Training', description: 'Proficiency with various firearms and combat tactics.', tags: ['skill', 'combat'], isComponent: true, attributes: [ { id: ATTR_WEAPON_PROFICIENCY_ID, name: 'Weapon Proficiency', type: 'string' } ] },
+    { id: COMPONENT_MEDICAL_TRAINING_ID, name: 'Skill: Medical Training', description: 'Ability to perform first aid and medical procedures.', tags: ['skill', 'medical'], isComponent: true, attributes: [ { id: ATTR_SKILL_LEVEL_ID, name: 'Level', type: 'number' } ]}
   ],
   entities: [
-    { id: ENTITY_JAX_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Jax "Glitch" Corrigan', attributeValues: { [ATTR_BACKSTORY_ID]: 'A former corporate netrunner who keeps the colony\'s systems from frying.', [ATTR_ROLE_ID]: 'Chief Systems Analyst', [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5 }},
+    { id: ENTITY_JAX_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Jax "Glitch" Corrigan', attributeValues: { [ATTR_BACKSTORY_ID]: 'A former corporate netrunner who keeps the colony\'s systems from frying.', [ATTR_ROLE_ID]: 'Chief Systems Analyst', [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5, [`${COMPONENT_SKILL_ENGINEERING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 2 }},
     { id: 'char_2', templateId: TEMPLATE_CHARACTER_ID, name: 'Dr. Aris Thorne', attributeValues: { [ATTR_BACKSTORY_ID]: 'A bio-engineer with a questionable past.', [ATTR_ROLE_ID]: null }},
-    { id: ENTITY_RILEY_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Riley "Spark" Chen', attributeValues: { [ATTR_BACKSTORY_ID]: 'A gifted mechanic who can fix anything from a coffee maker to a fusion reactor with little more than a wrench and sheer willpower.', [ATTR_ROLE_ID]: 'Lead Technician', [`${COMPONENT_SKILL_ENGINEERING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 4 } },
+    { id: ENTITY_RILEY_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Riley "Spark" Chen', attributeValues: { [ATTR_BACKSTORY_ID]: 'A gifted mechanic who can fix anything from a coffee maker to a fusion reactor with little more than a wrench and sheer willpower.', [ATTR_ROLE_ID]: 'Lead Technician', [`${COMPONENT_SKILL_ENGINEERING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 4, [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 1 } },
     { id: ENTITY_GEOTHERMAL_VENT_ID, templateId: TEMPLATE_POWER_SOURCE_ID, name: 'Geo-Thermal Vent Alpha', attributeValues: { [ATTR_DESCRIPTION_ID]: 'The primary geothermal power plant, tapping into the planet\'s unstable core.', [ATTR_OPERATOR_ID]: null, [ATTR_OP_MODE_ID]: 'Normal Output' }},
     { id: ENTITY_SECTOR_GAMMA_TUNNELS_ID, templateId: TEMPLATE_LOCATION_ID, name: 'Sector Gamma Tunnels', attributeValues: { [ATTR_DESCRIPTION_ID]: 'A maze of humming maintenance corridors, rarely travelled and poorly lit.'}},
+    { id: ENTITY_KAELEN_ID, templateId: TEMPLATE_CHARACTER_ID, name: 'Kaelen "Cable" Vance', attributeValues: { [ATTR_BACKSTORY_ID]: 'A quiet but brilliant technician who prefers the company of machines to people. Responsible for maintaining the colony\'s intricate network of physical infrastructure.', [ATTR_ROLE_ID]: 'Infrastructure Specialist', [`${COMPONENT_SKILL_ENGINEERING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5, [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 3 } },
+    // FIX: Corrected a typo in the constant name from `COMPONENT_HACKING_ID` to `COMPONENT_SKILL_HACKING_ID`.
+    { id: ENTITY_DR_ELARA_ID, templateId: TEMPLATE_MEDIC_ID, name: 'Dr. Elara Vance', attributeValues: { [ATTR_BACKSTORY_ID]: 'The colony\'s chief medical officer. Calm under pressure and deeply empathetic, but haunted by a medical disaster in her past.', [ATTR_ROLE_ID]: 'Chief Medical Officer', [`${COMPONENT_SKILL_HACKING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 2, [`${COMPONENT_MEDICAL_TRAINING_ID}_${ATTR_SKILL_LEVEL_ID}`]: 5 } },
+    { id: ENTITY_SGT_REX_ID, templateId: TEMPLATE_SECURITY_TEAM_ID, name: 'Sgt. Rex "Hammer" Ivanova', attributeValues: { [ATTR_BACKSTORY_ID]: 'A veteran of the Outer Rim conflicts. Gruff and cynical, but fiercely loyal to the colony and its people.', [ATTR_ROLE_ID]: 'Head of Security', [`${COMPONENT_WEAPONS_TRAINING_ID}_${ATTR_WEAPON_PROFICIENCY_ID}`]: 'Pulse Rifles', [ATTR_FIELD_EXPERIENCE_ID]: 'Served 5 tours with the Consortium Marines. Specializes in close-quarters combat and perimeter defense.' } },
+    { id: ENTITY_CREW_QUARTERS_ALPHA_ID, templateId: TEMPLATE_CREW_QUARTERS_ID, name: 'Crew Quarters Alpha', attributeValues: { [ATTR_STATUS_ID]: 'Fully occupied. Reports of minor life support malfunctions.', [ATTR_CAPACITY_ID]: 50, [ATTR_MORALE_EFFECT_ID]: 'Neutral' } },
   ],
 };
 
